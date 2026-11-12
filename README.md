@@ -1,5 +1,9 @@
 # Usage Viewer
 
+[![Descargar el instalador para Windows](.github/assets/download-windows.svg)](https://github.com/jstihl01/UsageViewer/releases/latest/download/UsageViewer-Setup-x64.exe)
+
+Windows 11 · 64 bits · [Versiones y archivo SHA-256](https://github.com/jstihl01/UsageViewer/releases/latest)
+
 ![Icono de Usage Viewer](src/Assets/UsageViewer.png)
 
 Aplicación WPF para Windows 11 x64 que compara el consumo de Codex con el tiempo transcurrido en sus ventanas de 5 horas y 7 días.
