@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="WindowsChecks.cs" />
+    <Compile Include="../src/Usage.cs" Link="Usage.cs" />
+    <Compile Include="../src/RefreshSchedule.cs" Link="RefreshSchedule.cs" />
+    <Compile Include="../src/CodexConnection.cs" Link="CodexConnection.cs" />
+  </ItemGroup>
+</Project>
