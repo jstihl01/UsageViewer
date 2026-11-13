@@ -38,3 +38,5 @@ foreach($mutation in $mutations) {
     if([int]$result.TestRun.ResultSummary.Counters.failed -lt 1) {throw 'El fallo de la mutación no es una aserción de prueba.'}
     Write-Output "OK: mutación detectada: $($mutation.name)"
 }
+# dotnet test intentionally returns 1 for a detected mutation. Report the verified script outcome to CI.
+exit 0
