@@ -97,8 +97,10 @@ public sealed class CodexProcessClient : ICodexClient
         };
         start.ArgumentList.Add("--listen"); start.ArgumentList.Add("stdio://");
         start.ArgumentList.Add("--config"); start.ArgumentList.Add("cli_auth_credentials_store=\"keyring\"");
-        // Use the stable, path-scoped OS keyring rather than the experimental secrets backend.
-        start.ArgumentList.Add("--config"); start.ArgumentList.Add("features.secret_auth_storage=false");
+        // OAuth JSON can exceed Windows Credential Manager's 2,560 UTF-16-character limit.
+        // The pinned official backend encrypts it with age; only its small random key enters keyring.
+        // Keep keyring mandatory: an unavailable secure store must never fall back to plaintext.
+        start.ArgumentList.Add("--config"); start.ArgumentList.Add("features.secret_auth_storage=true");
         start.Environment["CODEX_HOME"]=profile;
         start.Environment.Remove("CODEX_API_KEY"); start.Environment.Remove("OPENAI_API_KEY");
         Process? process=null; CodexProcessClient? client=null;

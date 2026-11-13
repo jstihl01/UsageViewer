@@ -109,7 +109,7 @@ public sealed class SessionController : IAsyncDisposable
             restoreFailures++;
             var notice=error is FileNotFoundException or DirectoryNotFoundException?SessionNotice.ServerMissing:
                 error is InvalidDataException?SessionNotice.ServerIntegrity:
-                error is CodexRpcException credentialError&&credentialError.RemoteMessage.Contains("keyring",StringComparison.OrdinalIgnoreCase)?
+                error is CodexRpcException {CredentialStorageFailure:true}?
                 SessionNotice.CredentialStoreUnavailable:SessionNotice.Disconnected;
             Publish(State with { Session = SessionState.Disconnected, Notice = notice,
                 Limits = State.Limits.MarkStale() });
@@ -323,7 +323,9 @@ public sealed class SessionController : IAsyncDisposable
             var current = State;
             Publish(current with { Session = current.Session is SessionState.SigningOut ? SessionState.Disconnected :
                 current.Session is SessionState.SigningIn ? SessionState.SignedOut : current.Session,
-                Notice = current.Notice == SessionNotice.BrowserFailed ? current.Notice : SessionNotice.LoginFailed });
+                Notice = current.Notice == SessionNotice.BrowserFailed ? current.Notice :
+                    error is CodexRpcException {CredentialStorageFailure:true} ?
+                    SessionNotice.CredentialStoreUnavailable : SessionNotice.LoginFailed });
         }
         finally { operationGate.Release(); }
         if (State.Session == SessionState.Connected) await RefreshAsync(true);
@@ -384,7 +386,13 @@ public sealed class SessionController : IAsyncDisposable
                 id.GetString() != loginId) return;
             loginId = null;
             if (!args.TryGetProperty("success", out var success) || success.ValueKind is not JsonValueKind.True)
-                Publish(new(SessionState.SignedOut, Limits.Empty, SessionNotice.LoginFailed));
+            {
+                bool storage=args.TryGetProperty("error",out var error) && error.ValueKind==JsonValueKind.String &&
+                    CodexRpcException.IsCredentialStorageFailure(error.GetString()!);
+                log.Write(storage?"login_persistence_failed":"login_completed_failed","account/login/completed");
+                Publish(new(SessionState.SignedOut, Limits.Empty,
+                    storage?SessionNotice.CredentialStoreUnavailable:SessionNotice.LoginFailed));
+            }
             else await ReadAccountAsync(source);
         }
         finally { operationGate.Release(); }

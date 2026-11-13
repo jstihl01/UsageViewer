@@ -42,13 +42,15 @@ La aplicación avisa si hay una versión nueva mediante una consulta pública a 
 
 Ejecuta el nuevo instalador sobre la instalación existente. Conserva la ubicación y la elección de inicio con Windows. Si la app estaba funcionando, la actualización la cierra y puede reabrirla como icono. Una actualización silenciosa la reabre solo si estaba en marcha.
 
-**Al pasar de 1.0.15 a 1.1.0 debes iniciar sesión una vez más.** Las credenciales pasan del archivo antiguo al almacén de Windows mediante un nuevo inicio de sesión; no se copian tokens en claro. El archivo antiguo solo se retira tras confirmar la sesión protegida.
+**La versión 1.1.1 corrige el error de inicio de sesión persist_failed de 1.1.0.** Los tokens de ChatGPT pueden superar los 2.560 caracteres admitidos por una entrada de Windows. Ahora el backend oficial de Codex los guarda cifrados con age y conserva únicamente una clave aleatoria pequeña en el almacén de Windows.
+
+Al actualizar desde 1.0.15 o 1.1.0 puede ser necesario iniciar sesión una vez más. El archivo antiguo solo se retira tras confirmar el guardado protegido. No se copian tokens antiguos en claro ni se recurre silenciosamente a ese formato si falla el almacén seguro.
 
 Para desinstalar usa Configuración → Aplicaciones instaladas. El desinstalador cierra la app y su servidor y limpia sus datos y credenciales. Puedes cerrar sesión antes desde el panel. La limpieza local no revoca todas tus sesiones de ChatGPT: gestiona esa revocación desde la configuración de tu cuenta.
 
 ## Datos, privacidad y diagnóstico
 
-Los datos de Usage Viewer están en **%LocalAppData%\UsageViewer**. El perfil de Codex está aislado de otras instalaciones y utiliza el almacén seguro de Windows sin recurrir silenciosamente al archivo en claro.
+Los datos de Usage Viewer están en **%LocalAppData%\UsageViewer**. El perfil de Codex está aislado de otras instalaciones. La sesión se cifra en **codex-profile\secrets\codex_auth.age** y su clave permanece en el almacén seguro de Windows.
 
 Los registros locales rotan en tres archivos de hasta 1 MB. No guardan tokens, correo, cuerpos JSON ni URLs de autenticación. Usa **Abrir carpeta de registros** en el menú del icono para localizarlos; no adjuntes auth.json ni otras credenciales. [Detalles de privacidad](PRIVACIDAD.md).
 

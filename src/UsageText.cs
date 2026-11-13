@@ -19,7 +19,7 @@ internal static class UsageText
         SessionNotice.Disconnected=>"No se pudo conectar con Codex. Se reintentará automáticamente.",
         SessionNotice.ServerMissing=>"Falta el servidor de Codex. Revisa la cuarentena del antivirus o reinstala Usage Viewer.",
         SessionNotice.ServerIntegrity=>"El servidor de Codex no supera la comprobación de integridad. Reinstala Usage Viewer.",
-        SessionNotice.CredentialStoreUnavailable=>"No se puede acceder al almacén seguro de Windows. Consulta los registros.",
+        SessionNotice.CredentialStoreUnavailable=>"No se pudo guardar o leer tu sesión de forma segura en Windows. Consulta los registros.",
         SessionNotice.SignIn=>"Inicia sesión con ChatGPT para ver tu uso de Codex.",
         SessionNotice.Migration=>"Para proteger tu sesión, inicia sesión una vez más. Se guardará en el almacén seguro de Windows.",
         SessionNotice.LoginPending=>"Completa el inicio de sesión en tu navegador.",

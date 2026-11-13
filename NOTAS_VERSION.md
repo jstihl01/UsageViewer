@@ -1,17 +1,19 @@
-# Usage Viewer 1.1.0
+# Usage Viewer 1.1.1
 
-Actualización de estabilidad, seguridad y distribución para Windows 11 x64 (Intel/AMD; no ARM64).
+Corrige **persist_failed** al iniciar sesión con ChatGPT en Windows.
 
-- Recuperación automática de conexión, sondeo monotónico, control del servidor hijo y manejo de mensajes corruptos.
-- Credenciales en el almacén seguro de Windows, con perfil aislado. Es necesario iniciar sesión de nuevo una vez.
-- Recuperación del icono ante fallos de Explorer; primer inicio manual con panel visible.
-- Registros locales acotados sin tokens, correos ni URLs de acceso; menú de diagnóstico y marca temporal opcional.
-- .NET 10.0.15 incluido y servidor oficial de Codex 0.167.0 fijado y verificado.
-- Se conserva el diseño aprobado: icono de 5 horas con borde gris, detalle de ambos ciclos y logo sin borde exterior.
-- Aviso de nuevas versiones, sin instalación automática.
+En 1.1.0, algunos tokens OAuth superaban el límite de 2.560 caracteres admitido por una entrada del Administrador de credenciales de Windows. El acceso en el navegador terminaba, pero no podía guardarse la sesión.
 
-Se adjuntan instalador, SHA-256, inventario completo, SBOM, procedencia y atestaciones de GitHub, migración, matriz de las 53 observaciones y comprobaciones manuales.
+Esta versión usa el backend oficial cifrado del mismo servidor Codex 0.167.0: guarda los tokens cifrados con age en el perfil privado y conserva solo una clave aleatoria pequeña en Windows. No vuelve silenciosamente a un archivo con tokens en claro.
 
-**Los binarios propios siguen sin firma Authenticode**: la firma está preparada y aplazada hasta disponer de una identidad válida. El SHA-256 y la atestación no sustituyen esa firma. Los avisos oficiales de terceros están verificados; la auditoría exhaustiva de bibliotecas nativas internas de Codex queda como reserva documentada.
+- Prueba automática con credenciales sintéticas de 16.000 caracteres, persistencia tras reiniciar y aislamiento entre perfiles.
+- Comprobación del cierre de sesión y de que un fallo de guardado no crea auth.json.
+- Limpieza al desinstalar de la clave de cifrado y de las credenciales antiguas, exclusivamente para Usage Viewer.
+- Explicación del fallo de almacenamiento en la interfaz y diagnóstico seguro.
+- Se conserva el diseño aprobado y las demás correcciones de 1.1.0.
 
-Las pruebas automáticas no sustituyen las comprobaciones manuales. Instalación, actualización y desinstalación reales, OAuth con una cuenta de ChatGPT, suspensión, Explorer, DPI y accesibilidad quedan pendientes de validación por el usuario. Consulta los documentos adjuntos.
+**Instala 1.1.1 y vuelve a iniciar sesión.** Puede ser necesario repetir el acceso incluso si 1.1.0 sí había guardado una sesión corta.
+
+Se adjuntan instalador, SHA-256, inventario, SBOM y atestaciones de procedencia. Windows 11 x64 (Intel/AMD; no ARM64). Los binarios propios siguen sin firma Authenticode, como se documentó en 1.1.0.
+
+La prueba con una cuenta real de ChatGPT y las demás comprobaciones manuales permanecen pendientes del usuario. No se ha controlado su escritorio.

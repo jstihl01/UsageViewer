@@ -192,6 +192,26 @@ public class SessionTests
         Assert.Equal(SessionState.SignedOut,controller.State.Session);
         Assert.Equal(SessionNotice.AuthenticationRequired,controller.State.Notice);
     }
+    [Fact] public async Task LoginPersistenceFailureHasActionableNoticeAndNoPendingLogin()
+    {
+        var client=Client();
+        client.Handle=(method,_,_)=>Task.FromResult(method switch
+        {
+            "account/read"=>Json("""{"account":null}"""),
+            "account/login/start"=>Json("""{"loginId":"test-login","authUrl":"https://auth.openai.com/authorize"}"""),
+            _=>Json("{}")
+        });
+        await using var controller=new SessionController(new Factory(client),_=>Task.CompletedTask);
+        await controller.RestoreAsync();await controller.ChangeSessionAsync();
+        Assert.Equal(SessionState.SigningIn,controller.State.Session);
+        var completed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        controller.Changed+=state=>{if(state.Session==SessionState.SignedOut)completed.TrySetResult();};
+        client.Notify("account/login/completed",Json("""{"loginId":"test-login","success":false,"error":"failed to write OAuth tokens to encrypted auth storage"}"""));
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(SessionNotice.CredentialStoreUnavailable,controller.State.Notice);
+        await controller.ChangeSessionAsync();
+        Assert.Equal(2,client.Methods.Count(x=>x=="account/login/start"));
+    }
     private sealed class Factory(FakeClient client):ICodexClientFactory
     {
         public int Starts,Failures;public Func<Task<ICodexClient>>? Create;

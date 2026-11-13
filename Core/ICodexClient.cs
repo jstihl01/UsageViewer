@@ -18,6 +18,11 @@ public sealed class CodexRpcException(int code, string remoteMessage) : IOExcept
 {
     public int Code { get; } = code;
     public string RemoteMessage { get; } = remoteMessage;
+    public bool CredentialStorageFailure => IsCredentialStorageFailure(RemoteMessage);
+    public static bool IsCredentialStorageFailure(string message) =>
+        message.Contains("keyring",StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("encrypted auth storage",StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("persist_failed",StringComparison.OrdinalIgnoreCase);
     public bool AuthenticationFailure => Code is 401 or 403 or -32001 ||
         RemoteMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
         RemoteMessage.Contains("authentication", StringComparison.OrdinalIgnoreCase);

@@ -4,11 +4,13 @@ Usage Viewer consulta la cuenta y las cuotas mediante el servidor oficial de Cod
 
 ## Sesión
 
-La versión 1.1.0 usa el almacén de credenciales de Windows mediante el modo obligatorio **keyring** de Codex. No vuelve silenciosamente al archivo en claro. El perfil está aislado en **%LocalAppData%\UsageViewer\codex-profile**. La clave del almacén se deriva de la ruta canónica de ese perfil, como establece el código de Codex 0.167.0.
+La versión 1.1.1 usa el backend oficial de autenticación cifrada de Codex 0.167.0, con **keyring obligatorio** y **secret_auth_storage activado**. No vuelve silenciosamente al archivo en claro. El perfil está aislado en **%LocalAppData%\UsageViewer\codex-profile**.
 
-Al actualizar desde 1.0.15 será necesario iniciar sesión una vez más. El archivo antiguo **auth.json** no se importa ni se lee para extraer tokens: solo se retira después de confirmar la sesión protegida. No compartas ni adjuntes ese archivo.
+Los tokens se cifran con age en **secrets\codex_auth.age**. Una clave aleatoria de 32 bytes, codificada en 44 caracteres, se guarda en el Administrador de credenciales de Windows; su identificador se deriva de la ruta canónica del perfil. Así se evita el límite de 2.560 caracteres que impedía guardar algunos tokens de ChatGPT en 1.1.0. La clave no se guarda junto al archivo cifrado.
 
-Cerrar sesión elimina las credenciales locales de este perfil. Esto no equivale a revocar todas las sesiones de ChatGPT: puedes gestionarlas desde la configuración de tu cuenta.
+Al actualizar desde 1.0.15 o 1.1.0 puede ser necesario iniciar sesión una vez más. El archivo antiguo **auth.json** no se importa ni se lee para extraer tokens: solo se retira después de confirmar el guardado protegido. No compartas ni adjuntes ese archivo.
+
+Cerrar sesión elimina el registro de autenticación del archivo cifrado. Puede conservar una clave local reutilizable y un archivo cifrado vacío, sin credenciales de la cuenta. Esto no equivale a revocar todas las sesiones de ChatGPT: puedes gestionarlas desde la configuración de tu cuenta.
 
 ## Otros datos locales
 
@@ -25,6 +27,6 @@ Codex gestiona la autenticación y la consulta de cuotas con OpenAI. Usage Viewe
 
 ## Desinstalación
 
-El desinstalador cierra la aplicación y el servidor, retira exclusivamente las credenciales de su perfil y elimina **%LocalAppData%\UsageViewer**. No modifica las sesiones ni los perfiles de otras instalaciones de Codex. Si no se puede completar la limpieza, comunica el error en lugar de darla por realizada.
+El desinstalador cierra la aplicación y el servidor, retira exclusivamente la clave de cifrado y las credenciales antiguas de su perfil y elimina **%LocalAppData%\UsageViewer**. No modifica las sesiones ni los perfiles de otras instalaciones de Codex. Si no se puede completar la limpieza, comunica el error en lugar de darla por realizada.
 
 El almacén de Windows reduce el riesgo de copiar un archivo con tokens; no protege frente a un atacante que ya controla por completo tu sesión de Windows.

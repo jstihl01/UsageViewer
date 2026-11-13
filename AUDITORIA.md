@@ -1,4 +1,4 @@
-# Matriz de revisión · Usage Viewer 1.1.0
+# Matriz de revisión · Usage Viewer 1.1.1
 
 Se han contrastado las **53 observaciones** de INFORME.md con el código. Esta matriz registra la solución y la evidencia, y mantiene separadas las comprobaciones automáticas de los resultados que requieren Windows interactivo o una cuenta real.
 
@@ -31,7 +31,7 @@ Las pruebas emplean referencias entre proyectos, xUnit, datos simulados y TimePr
 | FIA-12 | Respuestas, notificaciones y solicitudes diferenciadas; -32601 al método no admitido | ServerRequestCannotCompleteClientRequestWithSameId | C |
 | FIA-13 | Esperas de errores 1/2/5/15 minutos, actualización forzada inmediata | FailureBackoffAndExplicitForceAreBounded, InvalidQuotaPreservesLastGoodReadingAndExplainsFailure | C |
 | FIA-17 | Comprueba RegisterHotKey y explica conflicto; falla de permisos no se oculta | App y aviso de shell; el flujo no depende del éxito del atajo | P; conflicto real Ctrl+Alt+U |
-| SEG-01 | Keyring obligatorio, backend estable y CODEX_HOME privado; migración tras confirmación | SignedPinnedServerInitializesAndUsesIsolatedWindowsCredentialStore, CredentialMigrationWaitsForConfirmedProtectedAccount | P; sesión ChatGPT real y migración de token antiguo |
+| SEG-01 | Keyring obligatorio para la clave pequeña; tokens cifrados con age mediante el backend oficial y CODEX_HOME privado | Integración con credenciales sintéticas de 16.000 caracteres, aislamiento entre perfiles y ausencia de fallback; CredentialMigrationWaitsForConfirmedProtectedAccount | P; 1.1.0 falló con OAuth real por tamaño; 1.1.1 pendiente de revalidación del usuario |
 | SEG-03 | Hash y Authenticode antes de ejecutar, archivo bloqueado contra escritura durante arranque | ChangedBinaryIsRejectedBeforeItCanRun, servidor firmado en integración | C; no pretende resistir un administrador que sustituya toda la app |
 | OPS-10 | Si GUID falla, usa identidad HWND; negociación v4/legado y reintentos acotados | GuidFailureFallsBackToWindowIdentityAndUsesSameIdentityForBounds, FailedVersionNegotiationRetriesAndExplorerRestartReregisters, RepeatedRegistrationFailureHasBackoff | P; movimiento de ruta y Explorer real |
 | DEP-06 | Publicación en carpeta nueva; compara todos los archivos con el inventario y entrada del compilador | build.ps1, package-manifest.json, log Inno | C |
@@ -71,3 +71,13 @@ La revisión incluye separación de credenciales con el servidor oficial firmado
 No se afirma haber observado animaciones, instalado/desinstalado en el escritorio del usuario, probado suspensión con su sesión, autorizado OAuth con su cuenta ni validado accesibilidad humana. Tampoco se afirma una auditoría de todas las dependencias nativas de OpenAI. Estas reservas permanecen visibles tras la publicación.
 
 DEP-01 se mantiene aplazada hasta disponer de una identidad de firma válida. No se ha contratado ningún servicio.
+
+## Corrección del inicio de sesión en 1.1.1
+
+El usuario aportó una captura de **persist_failed** en 1.1.0: la autenticación había finalizado, pero el backend directo no podía guardar más de 2.560 caracteres UTF-16 en Windows. La prueba original con una API key corta no representaba el tamaño de los tokens OAuth reales.
+
+Se activa el backend opcional oficial **secret_auth_storage** del mismo servidor firmado 0.167.0. Cifra el registro con age y conserva solo una clave aleatoria de 32 bytes en Windows. La selección **keyring**, sin fallback a archivo en claro, permanece obligatoria. Este backend queda fijado a esa versión y sujeto a la revisión de mantenimiento.
+
+La integración usa ahora una credencial sintética de 16.000 caracteres, comprueba su formato cifrado, la persistencia tras reiniciar el servidor, la presencia y retirada de su clave y la conservación del segundo perfil. Se añaden cierre de sesión con reinicio y fallo real de escritura sin fallback. La interfaz distingue el fallo del almacenamiento de otros errores de acceso y registra solo su categoría segura.
+
+No se ha usado la cuenta del usuario ni se ha observado o controlado su escritorio. La autenticación OAuth real de 1.1.1 permanece pendiente de su validación.

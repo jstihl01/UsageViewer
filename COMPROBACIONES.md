@@ -1,8 +1,10 @@
-# Comprobaciones manuales · Usage Viewer 1.1.0
+# Comprobaciones manuales · Usage Viewer 1.1.1
 
 Todas las comprobaciones de esta tabla quedan **pendientes de validación por el usuario**. Las pruebas automatizadas, sus resultados y sus límites se describen en AUDITORIA.md. No se ha controlado ni observado el escritorio del usuario para dar estas comprobaciones por superadas.
 
 Al ejecutar un caso, anota fecha, versión exacta, configuración de Windows y resultado. Usa una VM o cuenta de prueba para revocaciones, cambios de reloj y fallos provocados.
+
+Historial aportado por el usuario: en **1.1.0**, MAN-04 falló con **persist_failed** porque las credenciales excedían el límite de la entrada de Windows. En **1.1.1** este caso vuelve a quedar pendiente de validación con su cuenta; la regresión se prueba automáticamente con datos sintéticos de 16.000 caracteres.
 
 | ID | Precondición | Pasos | Resultado esperado | Resultado / fecha |
 | --- | --- | --- | --- | --- |
@@ -10,7 +12,7 @@ Al ejecutar un caso, anota fecha, versión exacta, configuración de Windows y r
 | MAN-02 | Primer inicio manual | Abrir desde Inicio o marcar Abrir tras instalar | Aparece el panel de inicio de sesión; el icono permanece | Pendiente |
 | MAN-03 | Primer uso completado | Salir y abrir otra vez; iniciar sesión en Windows con autoarranque | Inicia como icono; el arranque automático no despliega el panel | Pendiente |
 | MAN-04 | Cuenta de prueba | Iniciar sesión en el navegador | Muestra la cuenta y las cuotas; no altera otras instalaciones de Codex | Pendiente |
-| MAN-05 | Actualización desde 1.0.15 | Instalar y volver a iniciar sesión una vez | Usa el almacén seguro; el archivo antiguo solo desaparece tras confirmar la nueva sesión | Pendiente |
+| MAN-05 | Actualización desde 1.0.15 o 1.1.0 | Instalar y volver a iniciar sesión una vez | Guarda tokens cifrados y una clave pequeña en Windows; el archivo antiguo solo desaparece tras confirmar el guardado protegido | Pendiente |
 | MAN-06 | Sesión activa, Codex sin consumo durante la comparación | Actualizar ahora y comparar con el visor oficial | Porcentajes compatibles con su redondeo y momento de lectura; reinicios coinciden al minuto mostrado | Pendiente |
 | MAN-07 | Sesión activa | Abrir desde el icono, volver a pulsarlo, repetir rápidamente | Abre y pliega una vez por clic; nunca desaparece el icono ni se reabre por el mismo gesto | Pendiente |
 | MAN-08 | Panel abierto | Pulsar dentro, fuera, otra app, icono y Esc | Dentro permanece; fuera e icono pliegan; el clic llega a su destino; Esc pliega | Pendiente |

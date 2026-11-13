@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using UsageViewer.Core;
 using UsageViewer.Windows;
@@ -31,17 +33,30 @@ public class ProcessTests
             second=await CodexProcessClient.StartAsync(executable,b,Hash,"1.1.0",NullLog.Instance,deadline.Token);
             var read=await first.RequestAsync("account/read",new{refreshToken=false},deadline.Token);
             Assert.Equal(JsonValueKind.Null,read.GetProperty("account").ValueKind);
-            await first.RequestAsync("account/login/start",new{type="apiKey",apiKey="UsageViewer-test-"+Guid.NewGuid().ToString("N")},deadline.Token);
+            string longCredential="UsageViewer-test-"+new string('x',16000)+Guid.NewGuid().ToString("N");
+            await first.RequestAsync("account/login/start",new{type="apiKey",apiKey=longCredential},deadline.Token);
             read=await first.RequestAsync("account/read",new{refreshToken=false},deadline.Token);
             Assert.Equal("apiKey",read.GetProperty("account").GetProperty("type").GetString());
             Assert.False(File.Exists(Path.Combine(a,"auth.json")));
+            Assert.True(ContainsKey(CredentialCleanup.SecretsAccountKey(a)));
+            string cipher=Path.Combine(a,"secrets","codex_auth.age");
+            Assert.True(File.Exists(cipher));
+            string encrypted=System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(cipher));
+            Assert.StartsWith("age-encryption.org/v1",encrypted);
+            Assert.DoesNotContain(longCredential,encrypted);
             var other=await second.RequestAsync("account/read",new{refreshToken=false},deadline.Token);
             Assert.Equal(JsonValueKind.Null,other.GetProperty("account").ValueKind);
             Assert.NotEqual(CredentialCleanup.AccountKey(a),CredentialCleanup.AccountKey(b));
+            Assert.NotEqual(CredentialCleanup.SecretsAccountKey(a),CredentialCleanup.SecretsAccountKey(b));
             await second.RequestAsync("account/login/start",new{type="apiKey",apiKey="UsageViewer-test-"+Guid.NewGuid().ToString("N")},deadline.Token);
+            await first.DisposeAsync();first=null;
+            first=await CodexProcessClient.StartAsync(executable,a,Hash,"1.1.1",NullLog.Instance,deadline.Token);
+            read=await first.RequestAsync("account/read",new{refreshToken=false},deadline.Token);
+            Assert.Equal("apiKey",read.GetProperty("account").GetProperty("type").GetString());
             await first.DisposeAsync();first=null;
             await second.DisposeAsync();second=null;
             CredentialCleanup.DeleteOwned(a);
+            Assert.False(ContainsKey(CredentialCleanup.SecretsAccountKey(a)));
             first=await CodexProcessClient.StartAsync(executable,a,Hash,"1.1.0",NullLog.Instance,deadline.Token);
             read=await first.RequestAsync("account/read",new{refreshToken=false},deadline.Token);
             Assert.Equal(JsonValueKind.Null,read.GetProperty("account").ValueKind);
@@ -62,6 +77,78 @@ public class ProcessTests
             {try{if(Directory.Exists(profile))CredentialCleanup.DeleteOwned(profile);}catch(Exception){}}
             DeleteTestRoot(root);
         }
+    }
+    [RealServerFact] public async Task LogoutRemovesEncryptedCredentialsAcrossServerRestart()
+    {
+        string root=Path.Combine(Path.GetTempPath(),"UsageViewer-"+Guid.NewGuid().ToString("N"));
+        string profile=Path.Combine(root,"profile");
+        string executable=Environment.GetEnvironmentVariable("USAGEVIEWER_CODEX_BINARY")!;
+        CodexProcessClient? client=null;
+        try
+        {
+            using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            client=await CodexProcessClient.StartAsync(executable,profile,Hash,"1.1.1",NullLog.Instance,deadline.Token);
+            await client.RequestAsync("account/login/start",new{type="apiKey",apiKey=new string('x',16000)},deadline.Token);
+            await client.RequestAsync("account/logout",null,deadline.Token);
+            await client.DisposeAsync();client=null;
+            client=await CodexProcessClient.StartAsync(executable,profile,Hash,"1.1.1",NullLog.Instance,deadline.Token);
+            var result=await client.RequestAsync("account/read",new{refreshToken=false},deadline.Token);
+            Assert.Equal(JsonValueKind.Null,result.GetProperty("account").ValueKind);
+            Assert.False(File.Exists(Path.Combine(profile,"auth.json")));
+        }
+        finally
+        {
+            if(client is not null)await client.DisposeAsync();
+            if(Directory.Exists(profile))CredentialCleanup.DeleteOwned(profile);
+            DeleteTestRoot(root);
+        }
+    }
+    [RealServerFact] public async Task EncryptionStorageFailureNeverFallsBackToPlaintext()
+    {
+        string root=Path.Combine(Path.GetTempPath(),"UsageViewer-"+Guid.NewGuid().ToString("N"));
+        string profile=Path.Combine(root,"profile");
+        Directory.CreateDirectory(profile);
+        // A file occupying the encrypted directory is a real write failure without changing OS permissions.
+        string blocker=Path.Combine(profile,"secrets");
+        await File.WriteAllTextAsync(blocker,"test-blocker");
+        CodexProcessClient? client=null;
+        try
+        {
+            using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            client=await CodexProcessClient.StartAsync(Environment.GetEnvironmentVariable("USAGEVIEWER_CODEX_BINARY")!,
+                profile,Hash,"1.1.1",NullLog.Instance,deadline.Token);
+            await Assert.ThrowsAsync<CodexRpcException>(()=>client.RequestAsync("account/login/start",
+                new{type="apiKey",apiKey=new string('x',16000)},deadline.Token));
+            Assert.False(File.Exists(Path.Combine(profile,"auth.json")));
+            Assert.Equal("test-blocker",await File.ReadAllTextAsync(blocker));
+        }
+        finally
+        {
+            if(client is not null)await client.DisposeAsync();
+            File.Delete(blocker);
+            CredentialCleanup.DeleteOwned(profile);
+            DeleteTestRoot(root);
+        }
+    }
+    private static bool ContainsKey(string account)
+    {
+        if(!NativeMethods.CredEnumerate(null,0,out uint count,out IntPtr entries))
+        {
+            int error=Marshal.GetLastWin32Error();
+            if(error==1168)return false;
+            throw new Win32Exception(error);
+        }
+        try
+        {
+            for(int i=0;i<count;i++)
+            {
+                var credential=Marshal.PtrToStructure<NativeMethods.Credential>(Marshal.ReadIntPtr(entries,i*IntPtr.Size));
+                if(credential.Type==1&&(Marshal.PtrToStringUni(credential.TargetName)??"").Contains(account,StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+        finally{NativeMethods.CredFree(entries);}
     }
     [Fact] public async Task ChangedBinaryIsRejectedBeforeItCanRun()
     {
