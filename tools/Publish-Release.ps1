@@ -29,7 +29,10 @@ function Api([string]$Method,[string]$Uri,$Body=$null,[string]$File='') {
     $params=@{Method=$Method;Uri=$Uri;Headers=$headers;TimeoutSec=900}
     if($File) {$params.InFile=$File;$params.ContentType='application/octet-stream'}
     elseif($null -ne $Body) {$params.Body=$Body|ConvertTo-Json -Depth 12;$params.ContentType='application/json; charset=utf-8'}
-    try {Invoke-RestMethod @params}
+    try {
+        $response=Invoke-RestMethod @params
+        foreach($entry in $response) {$entry}
+    }
     catch {throw "GitHub rechazó $Method $($uriObject.AbsolutePath): HTTP $($_.Exception.Response.StatusCode)."}
 }
 function Assert-Assets($Release) {
@@ -51,7 +54,9 @@ $record=Get-Content (Join-Path $root 'dist/UsageViewer-provenance.json') -Raw|Co
 $manifest=Get-Content (Join-Path $root 'dist/UsageViewer-package-manifest.json') -Raw|ConvertFrom-Json
 $commit=(& git -C $root rev-parse HEAD).Trim()
 if($record.sourceDirty -or $manifest.sourceDirty -or $record.version -ne $version -or $manifest.version -ne $version -or
-    $record.commit -ne $commit -or $manifest.commit -ne $commit) {throw 'La entrega no corresponde a este commit limpio y versión.'}
+    $record.commit -ne $manifest.commit -or ($Mode -ne 'Verify' -and $record.commit -ne $commit)) {
+    throw 'La entrega no corresponde a un commit limpio y a esta versión.'
+}
 $setup=Join-Path $root 'dist/UsageViewer-Setup-x64.exe'
 $sha=(Get-FileHash $setup).Hash.ToLowerInvariant()
 $shaFile=(Get-Content "$setup.sha256" -Raw).Split(' ')[0].Trim()
@@ -65,6 +70,13 @@ $releases=@(Api GET "$api/releases?per_page=100")
 $release=$releases|Where-Object tag_name -eq $tag|Select-Object -First 1
 if($Mode -eq 'Verify') {
     if(!$release) {throw 'No existe la versión solicitada.'}
+    $reference=Api GET "$api/git/ref/tags/$tag"
+    for($i=0;$reference.object.type -eq 'tag' -and $i -lt 5;$i++) {
+        $reference=Api GET "$api/git/tags/$($reference.object.sha)"
+    }
+    if($reference.object.type -ne 'commit' -or $reference.object.sha -ne $record.commit) {
+        throw 'La etiqueta publicada no coincide con la procedencia del artefacto.'
+    }
     Assert-Assets $release
     Write-Output "OK: todos los activos de $tag coinciden en tamaño y SHA-256."
     exit
