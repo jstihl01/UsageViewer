@@ -11,7 +11,7 @@ Responsable: **jstihl01**. Versión de esta revisión: **1.1.0**.
 
 El digest de Codex procede de los metadatos de la publicación **rust-v0.167.0** de OpenAI; el binario validado está firmado por **OpenAI OpCo, LLC**. El compilador fijado está firmado por **Pyrsys B.V.**. Su campo FileVersion no es una fuente fiable de versión; la comprobación usa su huella y procedencia.
 
-Los avisos de .NET se extraen de los paquetes runtime exactos. WindowsDesktop no distribuye necesariamente un archivo separado de avisos de terceros: no se inventa uno para satisfacer un nombre esperado. Se conservan los avisos realmente suministrados y su inventario. Codex incluye LICENSE y NOTICE de la etiqueta fijada; la comprobación no acredita una auditoría exhaustiva de todas las dependencias Rust enlazadas.
+Los avisos de .NET se extraen de los paquetes runtime exactos. WindowsDesktop no aporta un archivo separado de avisos en este paquete: se añaden los oficiales de las revisiones WPF y WinForms correspondientes a 10.0.15, con URL y huella fijadas. Se conservan los avisos realmente suministrados y su inventario. Codex incluye LICENSE y NOTICE de la etiqueta fijada; la comprobación no acredita una auditoría exhaustiva de todas las dependencias Rust enlazadas.
 
 ## Publicar
 

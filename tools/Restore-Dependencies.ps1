@@ -7,7 +7,10 @@ New-Item -ItemType Directory -Path $cache -Force | Out-Null
 $pins=Get-Content (Join-Path $root 'dependencies.json') -Raw | ConvertFrom-Json
 
 function Get-VerifiedFile([string]$Url,[string]$Path,[string]$Hash,[string]$Algorithm='SHA256') {
-    if(!(Test-Path -LiteralPath $Path)) { Invoke-WebRequest -Uri $Url -OutFile $Path -TimeoutSec 600 }
+    if(!(Test-Path -LiteralPath $Path)) {
+        Write-Output ("Descargando "+[IO.Path]::GetFileName($Path))
+        Invoke-WebRequest -Uri $Url -OutFile $Path -TimeoutSec 600
+    }
     if((Get-FileHash -LiteralPath $Path -Algorithm $Algorithm).Hash -ne $Hash) {
         throw "La descarga no coincide con la huella fijada: $([IO.Path]::GetFileName($Path))."
     }
