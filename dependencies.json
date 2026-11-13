@@ -1,0 +1,34 @@
+{
+  "sdk": {
+    "version": "10.0.404",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.404/dotnet-sdk-10.0.404-win-x64.zip",
+    "sha512": "330ddd2665b43cd2e428216a0d8ea1ac7bb19b5434fdc530e62010dc3b52823a620bf95489d628e1ed6f5122401793ee4887cca4a019122361a1231497f632ee"
+  },
+  "runtime": "10.0.15",
+  "codex": {
+    "version": "0.167.0",
+    "url": "https://github.com/openai/codex/releases/download/rust-v0.167.0/codex-app-server-x86_64-pc-windows-msvc.exe",
+    "sha256": "d781e2c96caeae19f5c8280814d778b92d4958bcca86064d6bec09d789ae7e22",
+    "publisher": "OpenAI OpCo, LLC",
+    "release": "https://api.github.com/repos/openai/codex/releases/tags/rust-v0.167.0"
+  },
+  "compiler": {
+    "version": "6.7.4",
+    "url": "https://files.jrsoftware.org/is/6/innosetup-6.7.4.exe",
+    "installerSha256": "a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c",
+    "sha256": "f02fa0e5f237b47d7ed1edae9b991866ec94fe02af61eb6a73e94f92fe8e0604",
+    "publisher": "Pyrsys B.V."
+  },
+  "gitleaks": {
+    "version": "8.30.1",
+    "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip",
+    "sha256": "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e"
+  },
+  "notices": [
+    { "file": "Codex-LICENSE.txt", "url": "https://raw.githubusercontent.com/openai/codex/rust-v0.167.0/LICENSE", "sha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc" },
+    { "file": "Codex-NOTICE.download", "url": "https://raw.githubusercontent.com/openai/codex/rust-v0.167.0/NOTICE", "sha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915" },
+    { "file": "Ratatui-MIT.txt", "url": "https://raw.githubusercontent.com/ratatui/ratatui/v0.29.0/LICENSE", "sha256": "6cfda12c40ae6c1175a0d1798c56e4d7089d9c781a2dbe29a53076defde829d0" },
+    { "file": "WPF-THIRD-PARTY-NOTICES.txt", "url": "https://raw.githubusercontent.com/dotnet/wpf/5961b581c906478ff6de63dc83090bbd4e9a5d9e/THIRD-PARTY-NOTICES.TXT", "sha256": "d23dba2fee20c6b59d8f7088ee9ed372459c952a319b7ca90f3eec370cc76eb9" },
+    { "file": "WinForms-THIRD-PARTY-NOTICES.txt", "url": "https://raw.githubusercontent.com/dotnet/winforms/f3adc279ed152f9b88ec678218011168e90b0bdb/THIRD-PARTY-NOTICES.TXT", "sha256": "5a412b38efae0b162dc0893b319023f4cd14a8985a0f9f9ae01ac052b37a36eb" }
+  ]
+}

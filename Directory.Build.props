@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.1.0</Version>
+    <Authors>jstihl01</Authors>
+    <Company>jstihl01</Company>
+    <Copyright>Copyright © 2026 jstihl01</Copyright>
+    <RepositoryUrl>https://github.com/jstihl01/UsageViewer</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <RuntimeFrameworkVersion>10.0.15</RuntimeFrameworkVersion>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>

@@ -1,70 +1,26 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using UsageViewer.Windows;
 
 namespace UsageViewer;
 
 internal static class Native
 {
-    private const uint NoActivate = 0x0010;
-    private const uint NoZOrder = 0x0004;
-    private const uint NoSize = 0x0001;
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct ScreenRect
+    internal static void PlacePanel(Window panel,NativeMethods.ScreenRect? anchor)
     {
-        public int Left, Top, Right, Bottom;
-
-        public readonly bool Contains(int x, int y) =>
-            x >= Left && x < Right && y >= Top && y < Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MonitorInfo
-    {
-        public int Size;
-        public ScreenRect Monitor, Work;
-        public uint Flags;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromRect(ref ScreenRect rect, uint flags);
-    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool GetWindowRect(IntPtr hwnd, out ScreenRect rect);
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint key);
-
-    internal static void PlacePanel(Window window, ScreenRect? anchor)
-    {
-        IntPtr hwnd = new WindowInteropHelper(window).Handle;
-        var monitor = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        ScreenRect icon = anchor.GetValueOrDefault();
-        IntPtr target = anchor.HasValue ? MonitorFromRect(ref icon, 2) : MonitorFromWindow(IntPtr.Zero, 1);
-        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var rect) ||
-            !GetMonitorInfo(target, ref monitor))
-            return;
-
-        int gap = (int)Math.Round(8 * GetDpiForWindow(hwnd) / 96.0);
-        int width = rect.Right - rect.Left;
-        int height = rect.Bottom - rect.Top;
-        int right = anchor.HasValue ? icon.Right : monitor.Work.Right - gap;
-        int y = anchor.HasValue ? icon.Top - height - gap : monitor.Work.Bottom - height - gap;
-        if (anchor.HasValue && y < monitor.Work.Top) y = icon.Bottom + gap;
-        int x = Math.Clamp(right - width, monitor.Work.Left, Math.Max(monitor.Work.Left, monitor.Work.Right - width));
-        y = Math.Clamp(y, monitor.Work.Top, Math.Max(monitor.Work.Top, monitor.Work.Bottom - height));
-        if (rect.Left == x && rect.Top == y) return;
-        SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, NoActivate | NoZOrder | NoSize);
+        var handle=new WindowInteropHelper(panel).Handle;
+        var rect=anchor??new NativeMethods.ScreenRect();
+        var monitor=anchor is null?NativeMethods.MonitorFromWindow(handle,2):NativeMethods.MonitorFromRect(ref rect,2);
+        var info=new NativeMethods.MonitorInfo { Size=Marshal.SizeOf<NativeMethods.MonitorInfo>() };
+        if (!NativeMethods.GetMonitorInfo(monitor,ref info)) return;
+        var transform=PresentationSource.FromVisual(panel)?.CompositionTarget?.TransformToDevice??System.Windows.Media.Matrix.Identity;
+        int width=(int)Math.Ceiling(panel.ActualWidth*transform.M11);
+        int height=(int)Math.Ceiling(panel.ActualHeight*transform.M22);
+        int x=anchor is {} target?(target.Left+target.Right-width)/2:info.Work.Right-width-12;
+        int y=anchor is {} icon?icon.Top-height-8:info.Work.Bottom-height-12;
+        x=Math.Clamp(x,info.Work.Left,Math.Max(info.Work.Left,info.Work.Right-width));
+        y=Math.Clamp(y,info.Work.Top,Math.Max(info.Work.Top,info.Work.Bottom-height));
+        NativeMethods.SetWindowPos(handle,IntPtr.Zero,x,y,0,0,0x0010|0x0004|0x0001);
     }
 }

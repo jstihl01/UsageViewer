@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using UsageViewer.Core;
 
 namespace UsageViewer;
 
@@ -39,7 +40,7 @@ internal sealed class RingsView : FrameworkElement
         foreach (var arc in arcs)
         {
             if (arc.End <= arc.Start) continue;
-            var pen = new Pen(PenFor(arc.Ink).Brush, thickness);
+            var pen = new Pen(PenFor(arc.Kind).Brush, thickness);
             if (arc.Start == 0 && arc.End == 1)
             {
                 drawing.DrawEllipse(null, pen, new Point(), radius, radius);
@@ -62,11 +63,11 @@ internal sealed class RingsView : FrameworkElement
         }
     }
 
-    internal static Pen PenFor(Ink ink) => ink switch
+    internal static Pen PenFor(SegmentKind ink) => ink switch
     {
-        Ink.Consumed => White,
-        Ink.Margin => Green,
-        Ink.Overlap => Red,
+        SegmentKind.Consumed => White,
+        SegmentKind.Margin => Green,
+        SegmentKind.Overlap => Red,
         _ => Gray
     };
 

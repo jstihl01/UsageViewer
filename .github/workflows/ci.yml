@@ -1,0 +1,49 @@
+name: Windows CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify tools and scan secrets
+        shell: pwsh
+        run: |
+          ./tools/Restore-Dependencies.ps1 -SecurityTools
+          ./.build/gitleaks/gitleaks.exe git . --redact --report-format json --report-path .build/gitleaks.json
+          if ($LASTEXITCODE) { throw 'Secret scan failed.' }
+      - name: Build, test, audit dependencies and inspect installer
+        shell: pwsh
+        run: ./build.ps1
+      - name: Check regression mutations
+        shell: pwsh
+        env:
+          DOTNET_CLI_HOME: ${{ github.workspace }}/.build/dotnet-home
+          DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: 'false'
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          NUGET_PACKAGES: ${{ github.workspace }}/.build/nuget
+        run: ./tools/Test-Mutations.ps1
+      - name: Save verification evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: windows-verification
+          path: |
+            dist/*
+            .build/test-results/*.trx
+            .build/nuget-audit.json
+            .build/gitleaks.json
+            .build/inno-build.log
+          retention-days: 14

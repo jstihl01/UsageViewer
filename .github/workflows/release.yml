@@ -1,0 +1,76 @@
+name: Windows release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify tools and scan secrets
+        shell: pwsh
+        run: |
+          ./tools/Restore-Dependencies.ps1 -SecurityTools
+          ./.build/gitleaks/gitleaks.exe git . --redact --report-format json --report-path .build/gitleaks.json
+          if ($LASTEXITCODE) { throw 'Secret scan failed.' }
+      - name: Build verified installer
+        shell: pwsh
+        run: ./build.ps1
+      - name: Check regression mutations
+        shell: pwsh
+        env:
+          DOTNET_CLI_HOME: ${{ github.workspace }}/.build/dotnet-home
+          DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: 'false'
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          NUGET_PACKAGES: ${{ github.workspace }}/.build/nuget
+        run: ./tools/Test-Mutations.ps1
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            dist/UsageViewer-Setup-x64.exe
+            dist/UsageViewer-SBOM.cdx.json
+            dist/UsageViewer-package-manifest.json
+            dist/UsageViewer-provenance.json
+      - name: Attest component inventory
+        id: sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist/UsageViewer-Setup-x64.exe
+          sbom-path: dist/UsageViewer-SBOM.cdx.json
+      - name: Publish checked draft
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          Copy-Item $env:PROVENANCE_BUNDLE dist/UsageViewer-provenance.sigstore.json
+          Copy-Item $env:SBOM_BUNDLE dist/UsageViewer-SBOM.sigstore.json
+          ./tools/Publish-Release.ps1 -Mode Publish
+      - name: Save release and test evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: usage-viewer-release
+          path: |
+            dist/*
+            .build/test-results/*.trx
+            .build/nuget-audit.json
+            .build/gitleaks.json
+            .build/inno-build.log
+          retention-days: 30
