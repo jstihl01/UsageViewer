@@ -102,6 +102,14 @@ public class ProcessTests
         string absolute=Path.GetFullPath(root);
         if(!absolute.StartsWith(Path.GetFullPath(Path.GetTempPath()),StringComparison.OrdinalIgnoreCase)||
             !Path.GetFileName(absolute).StartsWith("UsageViewer-"))throw new InvalidOperationException("Ruta temporal no válida.");
-        if(Directory.Exists(absolute))Directory.Delete(absolute,true);
+        if(Directory.Exists(absolute))
+        {
+            // Codex's private skills cache can contain read-only Git pack files on a fresh machine.
+            // Do not follow reparse points while clearing attributes in this generated test directory.
+            var options=new EnumerationOptions {RecurseSubdirectories=true,AttributesToSkip=FileAttributes.ReparsePoint};
+            foreach(string path in Directory.EnumerateFiles(absolute,"*",options))
+                File.SetAttributes(path,File.GetAttributes(path)&~FileAttributes.ReadOnly);
+            Directory.Delete(absolute,true);
+        }
     }
 }
