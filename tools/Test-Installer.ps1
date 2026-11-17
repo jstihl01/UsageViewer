@@ -13,9 +13,23 @@ $checks=[Collections.Generic.List[object]]::new()
 function Run-Hidden([string]$File,[string[]]$Arguments,[int]$Expected=0) {
     $run=Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -WindowStyle Hidden
     if(!$run.WaitForExit(90000)){try{$run.Kill()}catch{};throw 'Plazo de instalación agotado.'}
+    $run.Refresh()
     if($run.ExitCode -ne $Expected){throw "Código de instalación inesperado: $($run.ExitCode), esperado: $Expected"}
 }
 function Check([string]$Name,[bool]$Passed){$checks.Add(@{name=$Name;passed=$Passed});if(!$Passed){throw "No se cumple: $Name"}}
+function Wait-Instance([int]$PreviousId=0) {
+    $prefix='Local\UsageViewer-'+[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $deadline=[DateTime]::UtcNow.AddSeconds(20)
+    do {
+        $candidate=Get-Process UsageViewer -ErrorAction SilentlyContinue|Where-Object {$_.Id -ne $PreviousId -and $_.Path -eq (Join-Path $target 'UsageViewer.exe')}|Select-Object -First 1
+        if($candidate) {
+            try {$mutex=[Threading.Mutex]::OpenExisting($prefix);$mutex.Dispose();return $candidate.Id}
+            catch [Threading.WaitHandleCannotBeOpenedException] {}
+        }
+        Start-Sleep -Milliseconds 100
+    } while([DateTime]::UtcNow -lt $deadline)
+    throw 'La instancia de prueba no llegó a iniciarse.'
+}
 function Verify-Installed {
     $manifest=Get-Content (Join-Path $target 'package-manifest.json') -Raw|ConvertFrom-Json
     foreach($file in $manifest.files){Check ('installed:'+ $file.path) ((Get-FileHash -LiteralPath (Join-Path $target $file.path)).Hash -eq $file.sha256)}
@@ -50,12 +64,15 @@ try {
     $exe=Join-Path $target 'UsageViewer.exe'
     Run-Hidden $exe @('--shutdown')
     $app=Start-Process -FilePath $exe -ArgumentList '--background' -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 3;Check 'background-start' (!$app.HasExited)
+    $started=Wait-Instance
+    Check 'background-start' ($started -eq $app.Id)
     # Update while the app holds its mutex. The installer must signal it and restart in background.
     Run-Hidden $Installer @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$target+'"'),('/LOG="'+(Join-Path $logs 'upgrade.log')+'"'))
-    Check 'old-instance-closed' $app.HasExited
+    $app.Refresh();Check 'old-instance-closed' $app.HasExited
     $upgrade=Get-Content (Join-Path $logs 'upgrade.log') -Raw
     Check 'sid-resolved-and-upgrade-detected' ($upgrade -match 'UsageViewer detected running: yes')
+    $restarted=Wait-Instance $app.Id
+    Check 'upgrade-reopened-in-background' ($restarted -ne $app.Id)
     Verify-Installed
     Run-Hidden $exe @('--shutdown')
     Run-Hidden (Join-Path $target 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+(Join-Path $logs 'uninstall.log')+'"'))
