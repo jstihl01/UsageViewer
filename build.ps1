@@ -24,7 +24,12 @@ $runtimeProperty=([xml](Get-Content Directory.Build.props)).Project.PropertyGrou
 if($runtimeProperty -ne $pins.runtime){throw 'Actualiza RuntimeFrameworkVersion en Directory.Build.props para que coincida con dependencies.json.'}
 if((Get-Content global.json -Raw|ConvertFrom-Json).sdk.version -ne $pins.sdk.version){throw 'El SDK de global.json no coincide con dependencies.json.'}
 $source=(& git rev-parse HEAD).Trim()
-$sourceDirty=[bool](& git status --porcelain --untracked-files=normal)
+$sourceChanges=@(& git status --porcelain --untracked-files=normal)
+$sourceDirty=$sourceChanges.Count -gt 0
+if($env:GITHUB_ACTIONS -eq 'true' -and $sourceDirty) {
+    $sourceChanges|Write-Output
+    throw 'La compilación oficial exige un checkout limpio; revisar los archivos indicados antes de empaquetar.'
+}
 $beforeAssets=@{}
 foreach($file in @('src/Assets/UsageViewer.png','src/Assets/UsageViewer.ico')) {
     $beforeAssets[$file]=(Get-FileHash $file).Hash

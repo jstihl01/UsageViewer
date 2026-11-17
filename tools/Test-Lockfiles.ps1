@@ -32,4 +32,10 @@ foreach($project in $projects) {
     & $dotnet restore (Join-Path $root $project) --locked-mode -r win-x64 --configfile (Join-Path $root 'NuGet.config')
     if($LASTEXITCODE){throw 'No se pudo restaurar en modo bloqueado.'}
 }
+# NuGet writes Windows CRLF; the repository explicitly stores LF. Keep the verified
+# contents byte-identical to checkout so git status cannot report a false dirty build.
+foreach($file in $before.Keys) {
+    $text=[IO.File]::ReadAllText($file).Replace("`r`n","`n")
+    [IO.File]::WriteAllText($file,$text,[Text.UTF8Encoding]::new($false))
+}
 Write-Output 'OK: bloqueos y restauración verificados.'

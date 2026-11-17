@@ -21,7 +21,7 @@ Los avisos .NET proceden de los paquetes exactos y de los commits WPF/WinForms f
 ## Preparar y verificar una entrega
 
 1. Trabajar en un clon Git limpio. Actualizar la versión central y las cabeceras de notas, migración, comprobaciones y matrices.
-2. Ejecutar `tools/Test-Lockfiles.ps1 -Update` si cambian versiones/proyectos; revisar el diff. CI regenera, compara y restaura con `--locked-mode`.
+2. Ejecutar `tools/Test-Lockfiles.ps1 -Update` si cambian versiones/proyectos; revisar el diff. CI regenera, compara y restaura con `--locked-mode`. Tras verificar conserva LF como el checkout; los finales CRLF que escribe NuGet no deben marcar una procedencia sucia.
 3. Ejecutar `build.ps1`, las once mutaciones y el escáner de secretos. TRX: mínimo por suite, cero omitidas/fallos y límite de cuelgue de dos minutos. El humo del instalador solo puede correr con `GITHUB_ACTIONS=true` en un runner efímero, nunca sobre la instalación del usuario.
 4. Revisar ambas matrices y las comprobaciones manuales. Los resultados pendientes no se convierten en superados por tener CI verde.
 5. Lanzar **Windows release**. El trabajo de compilación solo tiene lectura; el trabajo de publicación descarga su artefacto, verifica origen/huella, atesta y prepara el borrador. `environment: release` permite configurar revisores obligatorios desde GitHub; no se afirma que esa protección externa esté configurada.
