@@ -34,7 +34,8 @@ try {
     $zip=[IO.Compression.ZipFile]::OpenRead($package)
     try {
         $entry=$zip.GetEntry('runtimes/win-x64/native/'+$owned.path)
-        if(!$entry -or $entry.Length -ne $owned.bytes){throw 'El componente histórico no coincide con su inventario.'}
+        # The original 1.0.15 inventory records hashes, but predates byte counts.
+        if(!$entry -or $entry.Length -gt 10MB){throw 'El componente histórico no tiene un tamaño admisible.'}
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,(Join-Path $target $owned.path))
     } finally {$zip.Dispose();Remove-Item -LiteralPath $package -Force}
     if((Get-FileHash -LiteralPath (Join-Path $target $owned.path)).Hash -ne $owned.sha256){throw 'La huella del componente histórico no coincide.'}
