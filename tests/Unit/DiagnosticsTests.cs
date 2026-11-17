@@ -13,12 +13,12 @@ public class DiagnosticsTests
             var log=new EventLog(root,"1.1.0",500);
             for(int i=0;i<40;i++)
             {
-                log.Write("rpc_error","https://auth.openai.com/?token=private-token",
+                log.Write("rpc_error_"+i,"https://auth.openai.com/?token=private-token",
                     new IOException("private@example.invalid password=private-password"),401);
                 log.Stderr("private-token private@example.invalid C:\\Users\\PrivateName\\auth.json");
             }
             var files=Directory.GetFiles(root);
-            Assert.InRange(files.Length,1,3);
+            Assert.Equal(3,files.Length);
             string text=string.Concat(files.Select(File.ReadAllText));
             Assert.DoesNotContain("private",text,StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("auth.json",text);

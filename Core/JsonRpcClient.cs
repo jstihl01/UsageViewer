@@ -13,7 +13,8 @@ public sealed class JsonRpcClient : ICodexClient
     private readonly TimeSpan timeout;
     private readonly CancellationTokenSource stopping = new();
     private readonly SemaphoreSlim writer = new(1);
-    private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending = new();
+    private sealed record Pending(string Method, TaskCompletionSource<JsonElement> Completion);
+    private readonly ConcurrentDictionary<int, Pending> pending = new();
     private readonly Task reader;
     private int requestId;
     private int disposed, aborted;
@@ -35,7 +36,7 @@ public sealed class JsonRpcClient : ICodexClient
         if (!IsAlive) throw new IOException("Conexión cerrada.");
         int id = Interlocked.Increment(ref requestId);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        pending[id] = completion;
+        pending[id] = new(method, completion);
         using var deadline = new CancellationTokenSource(timeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, stopping.Token, deadline.Token);
         try
@@ -105,8 +106,9 @@ public sealed class JsonRpcClient : ICodexClient
                         }
                     }
                     else if (hasId && id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out int number) &&
-                             pending.TryGetValue(number, out var completion))
+                             pending.TryGetValue(number, out var request))
                     {
+                        var completion = request.Completion;
                         if (message.TryGetProperty("result", out var result) && !message.TryGetProperty("error", out _))
                             completion.TrySetResult(result.Clone());
                         else if (message.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
@@ -115,7 +117,7 @@ public sealed class JsonRpcClient : ICodexClient
                                 c.TryGetInt32(out int n) ? n : 0;
                             string text = error.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ?
                                 m.GetString()! : "";
-                            log.Write("rpc_error", code: code);
+                            log.Write("rpc_error", request.Method, code: code);
                             completion.TrySetException(new CodexRpcException(code, text));
                         }
                         else completion.TrySetException(new IOException("Respuesta de Codex no válida."));
@@ -130,7 +132,7 @@ public sealed class JsonRpcClient : ICodexClient
     private void Abort(Exception error)
     {
         if (Interlocked.Exchange(ref aborted, 1) != 0) return;
-        foreach (var completion in pending.Values) completion.TrySetException(error);
+        foreach (var request in pending.Values) request.Completion.TrySetException(error);
         stopping.Cancel();
     }
 

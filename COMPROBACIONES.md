@@ -1,4 +1,4 @@
-# Comprobaciones manuales · Usage Viewer 1.1.2
+# Comprobaciones manuales · Usage Viewer 1.1.3
 
 Todas las comprobaciones de esta tabla quedan **pendientes de validación por el usuario**. Las pruebas automatizadas, sus resultados y sus límites se describen en AUDITORIA.md. No se ha controlado ni observado el escritorio del usuario para dar estas comprobaciones por superadas.
 
@@ -38,5 +38,9 @@ El 17/11/2026 el usuario aportó capturas de **1.1.1** con icono duplicado tras 
 | MAN-26 | Versión posterior publicada o entorno de prueba | Abrir el panel | Aviso discreto; abre la página oficial y nunca ejecuta una actualización automáticamente | Pendiente |
 | MAN-27 | Tema claro, oscuro y contraste alto de Windows | Abrir el menú con clic derecho y recorrer opciones con teclado | Todas las etiquetas, opciones y marcas son legibles; el panel conserva su texto claro | Pendiente |
 | MAN-28 | Datos disponibles, ausentes o desactualizados | Dejar el cursor sobre el icono | El texto indica únicamente UsageViewer | Pendiente |
+| MAN-29 | Cuenta de ChatGPT conectada y VM de prueba | Mantener la sesión hasta renovar su token; reiniciar la app y comparar cuotas | Sigue conectada; persiste secrets/codex_auth.age; no aparece auth.json. Renovación real pendiente, no inferida del test apiKey | Pendiente |
+| MAN-30 | VM; ejecutable instalado ausente o en cuarentena | Desinstalar de forma interactiva y repetir silenciosamente con log | Interactivo permite continuar con advertencia; silencioso aborta y registra instrucciones. No anuncia limpieza de credenciales que no pudo completar | Pendiente |
+| MAN-31 | App conectada | Desactivar Buscar nuevas versiones; reiniciar y activar de nuevo | Se conserva la preferencia; no se consulta GitHub mientras esté desactivada; las cuotas siguen actualizándose | Pendiente |
+| MAN-32 | VM limpia con monitor de archivos y red | Iniciar la app con perfil vacío, conectar y observar la renovación | Documentar destinos y archivos del servidor oficial; no hay analítica/exportadores habilitados por Usage Viewer; anotar cualquier descarga auxiliar | Pendiente |
 
 La comparación con el visor oficial debe hacerse sin consumo simultáneo. Si hay diferencias, anota las horas de ambas lecturas; no envíes credenciales ni archivos de autenticación.

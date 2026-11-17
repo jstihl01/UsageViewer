@@ -96,8 +96,8 @@
       "usageviewer": {
         "type": "Project",
         "dependencies": {
-          "UsageViewer.Core": "[1.1.0, )",
-          "UsageViewer.Windows": "[1.1.0, )"
+          "UsageViewer.Core": "[1.1.3, )",
+          "UsageViewer.Windows": "[1.1.3, )"
         }
       },
       "usageviewer.core": {
@@ -106,7 +106,7 @@
       "usageviewer.windows": {
         "type": "Project",
         "dependencies": {
-          "UsageViewer.Core": "[1.1.0, )"
+          "UsageViewer.Core": "[1.1.3, )"
         }
       }
     },

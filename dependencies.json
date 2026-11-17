@@ -5,6 +5,10 @@
     "sha512": "330ddd2665b43cd2e428216a0d8ea1ac7bb19b5434fdc530e62010dc3b52823a620bf95489d628e1ed6f5122401793ee4887cca4a019122361a1231497f632ee"
   },
   "runtime": "10.0.15",
+  "runtimePackages": [
+    { "id": "Microsoft.NETCore.App.Runtime.win-x64", "sha512": "304180911187ac05d8036b7f2e8d260f11fefcee4d2ea8164dc561ef488e6494e9a0e08bfe329f3a00ea6280e2dd6f56727be22f80e1325fb99560bc731b6d4b" },
+    { "id": "Microsoft.WindowsDesktop.App.Runtime.win-x64", "sha512": "bd4a7efb7cfbd8e36e065cc2a654e18a264776e9d820b187dfb6df2a3cf3586ef99ec96589eabd9badc348691fe9bb9dcc080e5d0f7ffa358179a4b8aa551413" }
+  ],
   "codex": {
     "version": "0.167.0",
     "url": "https://github.com/openai/codex/releases/download/rust-v0.167.0/codex-app-server-x86_64-pc-windows-msvc.exe",
@@ -18,6 +22,11 @@
     "installerSha256": "a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c",
     "sha256": "f02fa0e5f237b47d7ed1edae9b991866ec94fe02af61eb6a73e94f92fe8e0604",
     "publisher": "Pyrsys B.V."
+    ,"stubs": [
+      { "file": "Setup.e32", "sha256": "0c94d43e2c0f4d8371a2e1813b5446f3bc85ece3211dc4a6676159b534bbc483" },
+      { "file": "SetupCustomStyle.e32", "sha256": "6848503904920ba8dc5e0d5af45091c081d1f03ac85d454db0ad31e522c92b31" },
+      { "file": "SetupLdr.e32", "sha256": "998c58046b0808e75a030859962e1fe1ea600e8a5cf4646b09aadce77342c1a9" }
+    ]
   },
   "gitleaks": {
     "version": "8.30.1",

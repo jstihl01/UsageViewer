@@ -14,7 +14,7 @@ public interface ICodexClientFactory
     Task<ICodexClient> StartAsync(CancellationToken cancellation);
 }
 
-public sealed class CodexRpcException(int code, string remoteMessage) : IOException("Codex rechazó la solicitud.")
+public sealed class CodexRpcException(int code, string remoteMessage) : Exception("Codex rechazó la solicitud.")
 {
     public int Code { get; } = code;
     public string RemoteMessage { get; } = remoteMessage;
@@ -23,7 +23,6 @@ public sealed class CodexRpcException(int code, string remoteMessage) : IOExcept
         message.Contains("keyring",StringComparison.OrdinalIgnoreCase) ||
         message.Contains("encrypted auth storage",StringComparison.OrdinalIgnoreCase) ||
         message.Contains("persist_failed",StringComparison.OrdinalIgnoreCase);
-    public bool AuthenticationFailure => Code is 401 or 403 or -32001 ||
-        RemoteMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
-        RemoteMessage.Contains("authentication", StringComparison.OrdinalIgnoreCase);
+    // -32001 is a server overload code, not proof that credentials have expired.
+    public bool AuthenticationFailure => !CredentialStorageFailure && Code is 401 or 403;
 }

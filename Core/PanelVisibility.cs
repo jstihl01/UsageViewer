@@ -1,10 +1,9 @@
-namespace UsageViewer;
+namespace UsageViewer.Core;
 
 internal sealed class PanelVisibility(Action show,Action hide,Func<IDisposable?> observer)
 {
     private IDisposable? subscription;
     internal bool Visible { get; private set; }
-    internal bool Observing=>subscription is not null;
     internal void Open()
     {
         if(Visible) return;

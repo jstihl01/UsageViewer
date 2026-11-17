@@ -5,6 +5,17 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: nuget
+    directories:
+      - /Core
+      - /Platform
+      - /src
+      - /tests/Unit
+      - /tests/Windows
+      - /tests/Integration
+      - /tests/ProcessFixture
+    schedule:
+      interval: monthly
+  - package-ecosystem: dotnet-sdk
     directory: /
     schedule:
       interval: monthly

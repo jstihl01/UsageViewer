@@ -3,7 +3,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace UsageViewer.Windows;
 
-public static class NativeMethods
+internal static class NativeMethods
 {
     public const uint CallbackMessage = 0x8001;
     [StructLayout(LayoutKind.Sequential)] public struct ScreenRect
@@ -66,6 +66,7 @@ public static class NativeMethods
     }
 
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className,string? title);
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromRect(ref ScreenRect rect, uint flags);
     [DllImport("user32.dll", EntryPoint="GetMonitorInfoW")] [return:MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
@@ -106,5 +107,7 @@ public static class NativeMethods
     [return:MarshalAs(UnmanagedType.Bool)] public static extern bool ConvertSecurityDescriptor(string text,uint revision,out IntPtr descriptor,out uint size);
     [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetKernelObjectSecurity(IntPtr handle,uint information,IntPtr descriptor);
+    [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetKernelObjectSecurity(IntPtr handle,uint information,byte[]? descriptor,uint length,out uint needed);
     [DllImport("kernel32.dll")] public static extern IntPtr LocalFree(IntPtr memory);
 }

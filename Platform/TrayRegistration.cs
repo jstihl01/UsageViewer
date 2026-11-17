@@ -3,23 +3,26 @@ using UsageViewer.Core;
 
 namespace UsageViewer.Windows;
 
-public interface ITrayShell
+internal interface ITrayShell
 {
+    bool Available => true;
     bool Notify(uint operation, ref NativeMethods.IconData data);
     bool Bounds(ref NativeMethods.IconIdentifier identifier, out NativeMethods.ScreenRect bounds);
 }
-public sealed class WindowsTrayShell : ITrayShell
+internal sealed class WindowsTrayShell : ITrayShell
 {
+    public bool Available => NativeMethods.FindWindow("Shell_TrayWnd",null)!=IntPtr.Zero;
     public bool Notify(uint operation, ref NativeMethods.IconData data) => NativeMethods.Shell_NotifyIcon(operation,ref data);
     public bool Bounds(ref NativeMethods.IconIdentifier id,out NativeMethods.ScreenRect bounds) =>
         NativeMethods.Shell_NotifyIconGetRect(ref id,out bounds)==0;
 }
 
-public sealed class TrayRegistration(ITrayShell shell, IntPtr owner, Guid guid, IEventLog log, TimeProvider? time = null) : IDisposable
+internal sealed class TrayRegistration(ITrayShell shell, IntPtr owner, Guid guid, IEventLog log, TimeProvider? time = null) : IDisposable
 {
     private readonly TimeProvider clock=time??TimeProvider.System;
     private bool registered, useGuid=true, version4, disposed, retrying, identityEstablished, startupPrepared, probing;
     private long failedAt;
+    private int initialGuidFailures;
     public bool Version4 => version4;
     public bool Registered => registered;
     public bool UsesGuid => useGuid;
@@ -50,6 +53,8 @@ public sealed class TrayRegistration(ITrayShell shell, IntPtr owner, Guid guid, 
             return Complete(ref data);
         if (useGuid && !identityEstablished)
         {
+            // Startup can precede Explorer. One unavailable attempt must not discard the GUID.
+            if (!shell.Available || ++initialGuidFailures < 2) return Failed();
             // A failed ADD/MODIFY does not prove absence. Retire the candidate before creating
             // an alternative identity, and never switch identity after a successful registration.
             shell.Notify(2,ref data);

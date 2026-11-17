@@ -21,22 +21,27 @@ internal sealed class TrayIndicator : IDisposable
     internal bool ShowMarker { get; private set; }
 
     internal TrayIndicator(IntPtr owner,Action toggle,Action open,Action hide,Action refresh,
-        Action logs,Action<bool> markerChanged,Action exit,bool showMarker,IEventLog log,ITrayShell? shell=null)
+        Action logs,Action<bool> markerChanged,Action exit,bool showMarker,IEventLog log,ITrayShell? shell=null,
+        Action<Action>? safeAction=null,bool checkForUpdates=true,Action<bool>? updatesChanged=null)
     {
+        Action<Action> safe=safeAction??(action=>new ApplicationSafety(log,exit,()=>{}).Run(action));
         this.owner=owner; this.toggle=toggle; ShowMarker=showMarker;
         registration=new(shell??new WindowsTrayShell(),owner,new("F4E7BD90-A53E-45A9-91A9-77291E4052DC"),log);
         menu=TrayMenu.Create();
         Add("Abrir Usage Viewer",open); Add("Actualizar ahora",refresh);
         marker=new() { Header="Marca de tiempo accesible",IsCheckable=true,IsChecked=showMarker };
-        marker.Click+=(_,_)=> { ShowMarker=marker.IsChecked; markerChanged(ShowMarker); dirty=true; };
+        marker.Click+=(_,_)=>safe(()=> { ShowMarker=marker.IsChecked; markerChanged(ShowMarker); dirty=true; });
         menu.Items.Add(marker); Add("Abrir carpeta de registros",logs);
+        var updates=new MenuItem { Header="Buscar nuevas versiones",IsCheckable=true,IsChecked=checkForUpdates };
+        updates.Click+=(_,_)=>safe(()=>updatesChanged?.Invoke(updates.IsChecked));
+        menu.Items.Add(updates);
         menu.Items.Add(new Separator()); Add("Salir",exit);
-        menu.Opened+=(_,_)=>hide();
+        menu.Opened+=(_,_)=>safe(hide);
         menu.Closed+=(_,_)=>NativeMethods.PostMessage(owner,0,IntPtr.Zero,IntPtr.Zero);
         void Add(string text,Action action)
         {
             var item=new MenuItem { Header=text };
-            item.Click+=(_,_)=>action();
+            item.Click+=(_,_)=>safe(action);
             menu.Items.Add(item);
         }
     }

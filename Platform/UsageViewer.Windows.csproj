@@ -1,4 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup>
   <ItemGroup><ProjectReference Include="../Core/UsageViewer.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="UsageViewer" />
+    <InternalsVisibleTo Include="UsageViewer.Integration.Tests" />
+    <InternalsVisibleTo Include="UsageViewer.Windows.Tests" />
+  </ItemGroup>
 </Project>

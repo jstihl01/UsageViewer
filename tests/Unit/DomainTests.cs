@@ -153,7 +153,7 @@ public class DomainTests
             time.Advance(TimeSpan.FromMinutes(minutes)-TimeSpan.FromSeconds(1));Assert.False(s.IsDue(Limits.Empty));
             time.Advance(TimeSpan.FromSeconds(1));Assert.True(s.IsDue(Limits.Empty));
         }
-        s.Started();s.Force();Assert.True(s.IsDue(Limits.Empty));
+        s.Started();Assert.False(s.IsDue(Limits.Empty));
     }
     private sealed class AdjustableClock(DateTimeOffset initial):TimeProvider
     {

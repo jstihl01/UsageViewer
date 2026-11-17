@@ -3,13 +3,13 @@ using System.Runtime.InteropServices;
 using UsageViewer.Core;
 using UsageViewer.Windows;
 
-namespace UsageViewer;
+namespace UsageViewer.Windows;
 
-internal sealed class OutsideClickMonitor : IDisposable
+public sealed class OutsideClickMonitor : IDisposable
 {
     private readonly NativeMethods.MouseCallback callback;
     private IntPtr hook;
-    internal OutsideClickMonitor(Action<int,int,bool> pressed,IEventLog log)
+    public OutsideClickMonitor(Action<int,int,bool> pressed,IEventLog log)
     {
         callback=(code,message,data)=>
         {

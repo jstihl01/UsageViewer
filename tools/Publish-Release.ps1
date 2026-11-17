@@ -1,14 +1,22 @@
-param([ValidateSet('Prepare','Publish','Verify')][string]$Mode='Verify')
+param([ValidateSet('Prepare','Publish','Verify')][string]$Mode='Verify',[switch]$Stable,[switch]$AcceptPendingManualChecks)
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $root=Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'Build-Validation.ps1')
 $version=([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup.Version
 $tag="v$version"
-$repo='jstihl01/UsageViewer'
+$repository=([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup.RepositoryUrl
+$repo=([Uri]$repository).AbsolutePath.Trim('/')
 $api="https://api.github.com/repos/$repo"
 $files=@('UsageViewer-Setup-x64.exe','UsageViewer-Setup-x64.exe.sha256','UsageViewer-SBOM.cdx.json',
     'UsageViewer-package-manifest.json','UsageViewer-provenance.json','UsageViewer-provenance.sigstore.json',
-    'UsageViewer-SBOM.sigstore.json','UsageViewer-MIGRACION.md','UsageViewer-COMPROBACIONES.md','UsageViewer-AUDITORIA.md')
+    'UsageViewer-SBOM.sigstore.json','UsageViewer-MIGRACION.md','UsageViewer-COMPROBACIONES.md','UsageViewer-AUDITORIA.md',
+    'UsageViewer-REVISION.md','UsageViewer-pruebas.zip')
+Assert-VersionDocuments $root $version
+if($Mode -eq 'Publish' -and $Stable -and !$AcceptPendingManualChecks) {
+    $manual=Get-Content (Join-Path $root 'COMPROBACIONES.md') -Raw
+    if($manual -match '\|\s*Pendiente\s*\|'){throw 'Hay verificaciones manuales pendientes. Publica como preliminar; una excepción estable exige -AcceptPendingManualChecks explícito.'}
+}
 $token=$env:GITHUB_TOKEN
 if(!$token) {
     $env:GIT_TERMINAL_PROMPT='0'
@@ -85,7 +93,7 @@ if($release -and !$release.draft) {throw 'La versión ya está publicada; no se 
 if(!$release) {
     $notes=Get-Content (Join-Path $root 'NOTAS_VERSION.md') -Raw
     $release=Api POST "$api/releases" @{tag_name=$tag;target_commitish=$commit;name="Usage Viewer $version";
-        body=$notes;draft=$true;prerelease=$false}
+        body=$notes;draft=$true;prerelease=(!$Stable)}
 }
 foreach($name in $files) {
     $path=Join-Path $root "dist/$name"
@@ -102,9 +110,11 @@ $release=Api GET "$api/releases/$($release.id)"
 Assert-Assets $release
 Write-Output "OK: borrador $tag, todos los activos verificados."
 if($Mode -eq 'Publish') {
-    $release=Api PATCH "$api/releases/$($release.id)" @{draft=$false;make_latest='true'}
+    $release=Api PATCH "$api/releases/$($release.id)" @{draft=$false;prerelease=(!$Stable);make_latest=$(if($Stable){'true'}else{'false'})}
     Assert-Assets $release
-    $latest=Api GET "$api/releases/latest"
-    if($latest.id -ne $release.id) {throw 'La versión no aparece como la más reciente.'}
+    if($Stable) {
+        $latest=Api GET "$api/releases/latest"
+        if($latest.id -ne $release.id) {throw 'La versión no aparece como la más reciente.'}
+    }
     Write-Output "Publicado: $($release.html_url)"
 }

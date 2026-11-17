@@ -24,6 +24,12 @@ El blanco representa consumo, el gris el tramo restante, el verde el margen y el
 
 **Firma:** los artefactos propios todavía no están firmados con Authenticode. Windows puede mostrar advertencias de editor desconocido. El SHA-256 detecta corrupción de la descarga, pero no acredita por sí solo la identidad del editor. La procedencia de compilación publicada en GitHub es un control separado. No es necesario desactivar el antivirus ni añadir exclusiones generales para usar la aplicación.
 
+Para verificar esa procedencia con [GitHub CLI](https://cli.github.com/):
+
+    gh attestation verify .\UsageViewer-Setup-x64.exe --repo jstihl01/UsageViewer --signer-workflow jstihl01/UsageViewer/.github/workflows/release.yml
+
+También puedes verificar el ZIP de pruebas descargado con el mismo comando, cambiando el nombre del archivo. Comprueba que el commit y la etiqueta coinciden con la publicación elegida. Los archivos `*.sigstore.json` son los paquetes de atestación; la CLI puede consultar las atestaciones públicas directamente o recibir el paquete con `--bundle`.
+
 Windows puede colocar un icono nuevo bajo la flecha de iconos ocultos. Puedes hacerlo visible desde las opciones de la bandeja de la barra de tareas. Ctrl+Alt+U abre el panel; si otra aplicación ocupa el atajo, Usage Viewer lo indica.
 
 ## Uso y recuperación
@@ -38,7 +44,7 @@ El menú contextual permite actualizar, activar una marca de tiempo accesible, a
 
 ## Actualizar y desinstalar
 
-La aplicación avisa si hay una versión nueva mediante una consulta pública a GitHub, como máximo cada 24 horas. El aviso abre la página oficial; no descarga ni ejecuta instaladores automáticamente.
+La aplicación avisa si hay una versión nueva mediante una consulta pública a GitHub, como máximo cada 24 horas tras una consulta correcta; un fallo reintenta en una hora. Puedes desactivarla en **Buscar nuevas versiones**, en el menú del icono. El aviso abre la página oficial; no descarga ni ejecuta instaladores automáticamente. Las versiones preliminares no se ofrecen como estables.
 
 Ejecuta el nuevo instalador sobre la instalación existente. Conserva la ubicación y la elección de inicio con Windows. Si la app estaba funcionando, la actualización la cierra y puede reabrirla como icono. Una actualización silenciosa la reabre solo si estaba en marcha.
 
@@ -47,6 +53,8 @@ Ejecuta el nuevo instalador sobre la instalación existente. Conserva la ubicaci
 Al actualizar desde 1.0.15 o 1.1.0 puede ser necesario iniciar sesión una vez más. El archivo antiguo solo se retira tras confirmar el guardado protegido. No se copian tokens antiguos en claro ni se recurre silenciosamente a ese formato si falla el almacén seguro.
 
 Para desinstalar usa Configuración → Aplicaciones instaladas. El desinstalador cierra la app y su servidor y limpia sus datos y credenciales. Puedes cerrar sesión antes desde el panel. La limpieza local no revoca todas tus sesiones de ChatGPT: gestiona esa revocación desde la configuración de tu cuenta.
+
+Si falta el ejecutable o falla la limpieza, la desinstalación interactiva permite continuar con una advertencia; pueden quedar credenciales en Windows. La vía silenciosa aborta y deja instrucciones en el log. Reinstalar en la misma carpeta y volver a desinstalar es la forma preferida de completar la limpieza. [Limpieza manual de credenciales](PRIVACIDAD.md#limpieza-manual).
 
 ## Datos, privacidad y diagnóstico
 
@@ -58,7 +66,7 @@ Si falta el servidor, comprueba si Windows lo ha puesto en cuarentena y reinstal
 
 ## Compilar y comprobar
 
-Requiere Windows 11 x64 y PowerShell. Ejecuta:
+Requiere Windows 11 x64, PowerShell 7 y **un clon de Git** (el ZIP de fuentes no tiene la procedencia requerida). Ejecuta:
 
     ./build.ps1
 
@@ -66,15 +74,19 @@ El script prepara en la caché local el SDK .NET **10.0.404**, los runtimes **10
 
 La compilación ejecuta xUnit (núcleo, Windows e integración con el binario oficial), audita NuGet, publica en una carpeta nueva, verifica el inventario y genera en **dist** el instalador, SHA-256, inventario y SBOM CycloneDX. Las pruebas de credenciales utilizan perfiles temporales y valores ficticios, nunca tu cuenta.
 
-La publicación oficial se realiza desde **Windows release** en GitHub Actions: crea las atestaciones de procedencia y componentes, sube un borrador, comprueba todos sus archivos por tamaño y SHA-256 y solo entonces lo publica como versión más reciente. Los binarios propios permanecen sin firma Authenticode mientras no haya una identidad de firma.
+Esas pruebas usan el Administrador de credenciales del usuario que compila y retiran exclusivamente las claves de los perfiles temporales que crean. Se recomienda un runner desechable. Una interrupción forzosa de la máquina puede dejar restos de prueba; no son pruebas de OAuth ni de renovación real de ChatGPT.
 
-Para comprobar las tres regresiones señaladas por el informe:
+La publicación oficial se realiza desde **Windows release**: compila y prueba con permisos de lectura, ejecuta el instalador en un runner efímero y transfiere la entrega a un trabajo separado. Ese trabajo crea las atestaciones, comprueba el borrador y publica **como preliminar por defecto**. Promover a estable exige revisar expresamente los resultados manuales. El botón superior conserva la última estable. Los binarios propios siguen sin Authenticode.
+
+Para comprobar las once regresiones críticas del calendario, cuotas, RPC, concurrencia, avisos, firma, Job, límites y permisos:
 
     ./tools/Test-Mutations.ps1
 
-El generador del logo es una herramienta de autoría independiente; el build no reescribe los recursos versionados. La firma opcional se activa con el parámetro **-Sign** y una identidad externa ya configurada. No genera ni exporta certificados privados.
+El generador del logo es una herramienta de autoría independiente; el build no reescribe los recursos versionados. El parámetro local **-Sign** requiere una identidad y SignTool ya configurados. La firma del flujo oficial de Actions todavía **no está implementada**; no se han contratado servicios ni creado certificados.
 
 [Comprobaciones manuales](COMPROBACIONES.md) · [Matriz del informe](AUDITORIA.md) · [Mantenimiento y publicación](MANTENIMIENTO.md)
+
+[Correcciones del segundo informe, 17/11/2026](REVISION_2026-11-17.md). La entrega 1.1.3 permanece preliminar hasta validar con una cuenta real el acceso y la renovación.
 
 ## Licencia
 

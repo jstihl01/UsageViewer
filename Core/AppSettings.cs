@@ -2,10 +2,11 @@ using System.Text.Json;
 using System.IO;
 using UsageViewer.Core;
 
-namespace UsageViewer;
+namespace UsageViewer.Core;
 
 internal sealed record AppSettings(bool FirstRunCompleted=false,bool ShowTimeMarker=false,
-    DateTimeOffset? UpdateChecked=null,string? UpdateETag=null,string? AvailableVersion=null);
+    DateTimeOffset? UpdateChecked=null,string? UpdateETag=null,string? AvailableVersion=null,
+    bool CheckForUpdates=true,DateTimeOffset? UpdateAttempted=null);
 
 internal sealed class SettingsStore(string directory,IEventLog log)
 {

@@ -58,6 +58,10 @@ public static class BinaryTrust
     }
 }
 
+internal interface IBinaryVerifier { bool Verify(string path); }
+internal sealed class AuthenticodeVerifier : IBinaryVerifier
+{ public bool Verify(string path) => BinaryTrust.VerifySignature(path); }
+
 public sealed class CodexProcessClient : ICodexClient
 {
     private readonly Process process;
@@ -66,27 +70,38 @@ public sealed class CodexProcessClient : ICodexClient
     private readonly IEventLog log;
     private readonly CancellationTokenSource stopping = new();
     private readonly Task stderrTask;
+    private readonly string profile;
+    private readonly bool hadLegacyFile;
     private int disposed;
     public bool IsAlive => disposed == 0 && !process.HasExited && rpc.IsAlive;
-    public int ProcessId => process.Id;
     public event Action<string, JsonElement>? Notification
     { add => rpc.Notification += value; remove => rpc.Notification -= value; }
 
-    private CodexProcessClient(Process process, ProcessJob job, IEventLog log)
+    private CodexProcessClient(Process process, ProcessJob job, IEventLog log,string profile,bool hadLegacyFile,
+        TimeSpan? timeout,TimeProvider? clock)
     {
         this.process=process; this.job=job; this.log=log;
-        rpc=new(process.StandardOutput.BaseStream,process.StandardInput.BaseStream,log);
+        this.profile=profile;this.hadLegacyFile=hadLegacyFile;
+        rpc=new(process.StandardOutput.BaseStream,process.StandardInput.BaseStream,log,clock,timeout);
         stderrTask=DrainAsync();
     }
 
     public static async Task<CodexProcessClient> StartAsync(string executable, string profile, string hash,
         string version, IEventLog log, CancellationToken cancellation)
     {
+        try { return await StartVerifiedAsync(executable,profile,hash,version,log,cancellation,new AuthenticodeVerifier()); }
+        catch(Exception error) {log.Write("server_start_failed",error:error);throw;}
+    }
+
+    internal static async Task<CodexProcessClient> StartVerifiedAsync(string executable, string profile, string hash,
+        string version,IEventLog log,CancellationToken cancellation,IBinaryVerifier verifier,
+        TimeSpan? timeout=null,TimeProvider? clock=null)
+    {
         Directory.CreateDirectory(profile);
         // Keep the image non-writable/non-replaceable between hashing and Process.Start.
         await using var file=new FileStream(executable,FileMode.Open,FileAccess.Read,FileShare.Read);
         string actual=Convert.ToHexString(await SHA256.HashDataAsync(file,cancellation));
-        if (!actual.Equals(hash,StringComparison.OrdinalIgnoreCase) || !BinaryTrust.VerifySignature(executable))
+        if (!actual.Equals(hash,StringComparison.OrdinalIgnoreCase) || !verifier.Verify(executable))
             throw new InvalidDataException("El servidor de Codex no supera la verificación de integridad.");
         var job=new ProcessJob();
         var start=new ProcessStartInfo(executable)
@@ -95,12 +110,10 @@ public sealed class CodexProcessClient : ICodexClient
             RedirectStandardOutput=true, RedirectStandardError=true, WorkingDirectory=profile,
             StandardInputEncoding=new UTF8Encoding(false), StandardOutputEncoding=Encoding.UTF8
         };
-        start.ArgumentList.Add("--listen"); start.ArgumentList.Add("stdio://");
-        start.ArgumentList.Add("--config"); start.ArgumentList.Add("cli_auth_credentials_store=\"keyring\"");
         // OAuth JSON can exceed Windows Credential Manager's 2,560 UTF-16-character limit.
         // The pinned official backend encrypts it with age; only its small random key enters keyring.
         // Keep keyring mandatory: an unavailable secure store must never fall back to plaintext.
-        start.ArgumentList.Add("--config"); start.ArgumentList.Add("features.secret_auth_storage=true");
+        foreach(string argument in CodexContract.ServerArguments()) start.ArgumentList.Add(argument);
         start.Environment["CODEX_HOME"]=profile;
         start.Environment.Remove("CODEX_API_KEY"); start.Environment.Remove("OPENAI_API_KEY");
         Process? process=null; CodexProcessClient? client=null;
@@ -108,15 +121,16 @@ public sealed class CodexProcessClient : ICodexClient
         {
             process=Process.Start(start) ?? throw new IOException("No se pudo arrancar Codex.");
             job.Assign(process);
-            client=new(process,job,log);
+            client=new(process,job,log,profile,File.Exists(Path.Combine(profile,"auth.json")),timeout,clock);
             await client.rpc.RequestAsync("initialize",new
             { clientInfo=new { name="usage_viewer",title="Usage Viewer",version } },cancellation);
             await client.rpc.NotifyAsync("initialized",cancellation);
             log.Write("server_started");
             return client;
         }
-        catch
+        catch (Exception error)
         {
+            log.Write("server_start_failed",client is null?null:"initialize",error);
             if (client is not null) await client.DisposeAsync();
             else
             {
@@ -129,7 +143,16 @@ public sealed class CodexProcessClient : ICodexClient
 
     public async Task<JsonElement> RequestAsync(string method,object? parameters,CancellationToken cancellation)
     {
-        try { return await rpc.RequestAsync(method,parameters,cancellation); }
+        try
+        {
+            var result=await rpc.RequestAsync(method,parameters,cancellation);
+            if (!hadLegacyFile && File.Exists(Path.Combine(profile,"auth.json")))
+            {
+                log.Write("plaintext_credentials_detected",method);
+                throw new CodexRpcException(-32603,"keyring plaintext credentials detected");
+            }
+            return result;
+        }
         catch (TimeoutException) { await DisposeAsync(); throw; }
     }
 
@@ -138,7 +161,7 @@ public sealed class CodexProcessClient : ICodexClient
         try
         {
             await foreach (var line in BoundedLines.ReadAsync(process.StandardError.BaseStream,4096,stopping.Token,skipOversized:true))
-                if (log is EventLog events) events.Stderr(line);
+                log.Stderr(line);
         }
         catch (Exception error) { if (!stopping.IsCancellationRequested) log.Write("server_stderr_failed",error:error); }
     }

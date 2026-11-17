@@ -33,7 +33,10 @@ public partial class App : Application
     private AppSettings settings=new();
     private bool ownsInstance,closing,checkingUpdates;
     private string shellNotice="";
-    private readonly Version version=Assembly.GetExecutingAssembly().GetName().Version??new(1,1,0);
+    private string operationNotice="";
+    private DateTimeOffset noticeUntil;
+    private ApplicationSafety safety=null!;
+    private readonly Version version=Assembly.GetExecutingAssembly().GetName().Version??throw new InvalidOperationException("Falta la versión de la aplicación.");
     private string Profile=>Path.Combine(data,"codex-profile");
     private string Legacy=>Path.Combine(Profile,"auth.json");
 
@@ -41,11 +44,12 @@ public partial class App : Application
     {
         base.OnStartup(e);
         log=new EventLog(Path.Combine(data,"logs"),version.ToString(3));
+        safety=new(log,()=>Observe(StopAsync()),()=>
+        { operationNotice="No se pudo completar una acción. Consulta los registros.";noticeUntil=DateTimeOffset.UtcNow.AddSeconds(30); });
         DispatcherUnhandledException+=(_,args)=>
         {
-            log.Write("dispatcher_unhandled",error:args.Exception);
             args.Handled=true;
-            if (!closing) { closing=true; _=StopAsync(); }
+            safety.Unhandled(args.Exception);
         };
         AppDomain.CurrentDomain.UnhandledException+=(_,args)=>log.Write("process_unhandled",error:args.ExceptionObject as Exception);
         TaskScheduler.UnobservedTaskException+=(_,args)=>
@@ -54,26 +58,12 @@ public partial class App : Application
         {
             using var identity=WindowsIdentity.GetCurrent();
             string prefix=@"Local\UsageViewer-"+identity.User!.Value;
-            bool command=e.Args.Contains("--shutdown")||e.Args.Contains("--uninstall-cleanup");
+            bool command=InstallerCommands.IsCommand(e.Args);
             if (command)
             {
-                try { using var signal=EventWaitHandle.OpenExisting(prefix+"-shutdown"); signal.Set(); }
-                catch (WaitHandleCannotBeOpenedException) { }
-                try
-                {
-                    using var running=Mutex.OpenExisting(prefix);
-                    try { if (!running.WaitOne(TimeSpan.FromSeconds(12))) throw new IOException("La aplicación no se ha cerrado."); }
-                    catch (AbandonedMutexException) { }
-                    running.ReleaseMutex();
-                }
-                catch (WaitHandleCannotBeOpenedException) { }
-                if (e.Args.Contains("--uninstall-cleanup"))
-                {
-                    CredentialCleanup.DeleteOwned(Profile);
-                    File.Delete(Legacy);
-                    log.Write("uninstall_credentials_removed");
-                }
-                Shutdown(); return;
+                int code=InstallerCommands.Execute(e.Args,prefix,()=>
+                { CredentialCleanup.DeleteOwned(Profile);File.Delete(Legacy); },log);
+                Shutdown(code); return;
             }
             // Windows default DACL plus a SID-scoped name; failures are surfaced instead of crashing silently.
             instance=new Mutex(true,prefix,out ownsInstance);
@@ -104,15 +94,18 @@ public partial class App : Application
             { shellNotice="Ctrl+Alt+U no está disponible: puede estar en uso por otra aplicación."; log.Write("hotkey_unavailable"); }
             tray=new(hwnd,TogglePanel,OpenPanel,HidePanel,()=>Observe(RefreshNowAsync()),
                 OpenLogs,enabled=> { settings=settings with { ShowTimeMarker=enabled }; store.Save(settings); },
-                ()=>Observe(StopAsync()),settings.ShowTimeMarker,log);
+                ()=>Observe(StopAsync()),settings.ShowTimeMarker,log,safeAction:action=>safety.Run(action),
+                checkForUpdates:settings.CheckForUpdates,updatesChanged:enabled=>
+                { settings=settings with { CheckForUpdates=enabled };store.Save(settings);if(enabled)Observe(CheckUpdatesAsync()); });
             using var manifest=Assembly.GetExecutingAssembly().GetManifestResourceStream("UsageViewer.dependencies.json")
                 ??throw new IOException("No se encontró el manifiesto de dependencias.");
             using var pins=JsonDocument.Parse(manifest);
             string hash=pins.RootElement.GetProperty("codex").GetProperty("sha256").GetString()!;
             session=new(new CodexProcessFactory(Path.Combine(AppContext.BaseDirectory,"codex","codex-app-server.exe"),
                 Profile,hash,version.ToString(3),log),LaunchBrowserAsync,log,
-                legacyCredentials:()=>File.Exists(Legacy),cleanupLegacy:()=>File.Delete(Legacy));
-            session.Changed+=_=>Dispatcher.BeginInvoke(Render);
+                legacyCredentials:()=>File.Exists(Legacy),cleanupLegacy:()=>
+                { CredentialCleanup.DeleteLegacyKey(Profile);if(File.Exists(Legacy)) {File.Delete(Legacy);log.Write("legacy_credentials_removed");} });
+            session.Changed+=_=>Dispatcher.BeginInvoke(()=>safety.Run(Render,"render_failed"));
             visibility=new(
                 ()=> { panel.Show();PositionPanel();panel.Activate(); },
                 ()=> { panel.Hide();outside=null; },
@@ -150,14 +143,14 @@ public partial class App : Application
     private async Task TickAsync()
     {
         if(closing) return;
-        Render();
+        safety.Run(Render,"render_failed");
         if(session is not null) await session.TickAsync();
     }
     private void Render()
     {
         if(closing||panel is null||session is null) return;
         var state=session.State; var now=DateTimeOffset.UtcNow;
-        panel.Update(state,now,shellNotice);
+        panel.Update(state,now,shellNotice+(noticeUntil>now?"\n"+operationNotice:""));
         string? available=Version.TryParse(settings.AvailableVersion,out var candidate)&&candidate>version?
             settings.AvailableVersion:null;
         panel.SetUpdate(available,()=>Observe(LaunchBrowserAsync(UpdateChecker.Releases)));
@@ -177,8 +170,8 @@ public partial class App : Application
         {
             var result=await new UpdateChecker(http,TimeProvider.System,log).CheckAsync(settings,version,stopping.Token);
             settings=settings with { UpdateChecked=result.UpdateChecked,UpdateETag=result.UpdateETag,
-                AvailableVersion=result.AvailableVersion };
-            store?.Save(settings); _=Dispatcher.BeginInvoke(Render);
+                AvailableVersion=result.AvailableVersion,UpdateAttempted=result.UpdateAttempted };
+            store?.Save(settings); _=Dispatcher.BeginInvoke(()=>safety.Run(Render,"render_failed"));
         }
         finally { checkingUpdates=false; }
     }
@@ -201,7 +194,13 @@ public partial class App : Application
         {settings=settings with{FirstRunCompleted=true};store?.Save(settings);}
         Observe(RefreshNowAsync()); Observe(CheckUpdatesAsync());
     }
-    private void TogglePanel() { if(visibility?.Visible==true) HidePanel(); else OpenPanel(); }
+    private void TogglePanel()
+    {
+        if(visibility is null) return;
+        bool opening=!visibility.Visible;
+        visibility.Toggle();
+        if(opening) OpenPanel();
+    }
     private void HidePanel()
     {
         if(visibility is not null)visibility.Close();
@@ -244,7 +243,7 @@ public partial class App : Application
     private void PowerChanged(object sender,PowerModeChangedEventArgs args)
     {
         if(args.Mode==PowerModes.Resume) Dispatcher.BeginInvoke(()=>
-        { tray?.RecheckAfterResume(); Render(); if(panel?.IsVisible==true) PositionPanel(); Observe(RefreshNowAsync()); });
+        { safety.Run(()=> {tray?.RecheckAfterResume();Render();if(panel?.IsVisible==true)PositionPanel();});Observe(RefreshNowAsync()); });
     }
     private async void Observe(Task task)
     {

@@ -4,7 +4,7 @@ namespace UsageViewer.Core;
 
 public enum SessionState { Connecting, Disconnected, SignedOut, SigningIn, Connected, SigningOut, Stopping }
 public enum SessionNotice { None, Connecting, Disconnected, ServerMissing, ServerIntegrity, CredentialStoreUnavailable, SignIn, Migration, LoginPending, LoginFailed,
-    BrowserFailed, InvalidQuotas, NoMatchingWindows, Stale, AuthenticationRequired, UnexpectedError, CleanupFailed }
+    BrowserFailed, InvalidQuotas, NoMatchingWindows, Stale, AuthenticationRequired, CleanupFailed }
 public sealed record ViewState(SessionState Session, Limits Limits, SessionNotice Notice,
     string? Email = null, DateTimeOffset? LastSuccess = null);
 
@@ -37,7 +37,7 @@ public sealed class SessionController : IAsyncDisposable
     private CancellationTokenSource refreshStop = new();
     private ICodexClient? connection;
     private Task refreshTask = Task.CompletedTask;
-    private bool refreshing, refreshQueued, restoring, disposed, cleanupFailed;
+    private bool refreshing, refreshQueued, restoring, disposed, cleanupFailed, retryAuthentication;
     private string? loginId;
     private int sessionVersion, restoreFailures, quotaFailures;
     private long restoreFailedAt, lastNotification, lastAccountNotification;
@@ -68,7 +68,7 @@ public sealed class SessionController : IAsyncDisposable
         catch (Exception error) { log.Write("session_view_handler_failed", error: error); }
     }
 
-    private async Task<ICodexClient> ConnectAsync()
+    internal async Task<ICodexClient> ConnectAsync()
     {
         await connectionGate.WaitAsync(stopping.Token);
         try
@@ -99,12 +99,11 @@ public sealed class SessionController : IAsyncDisposable
         catch (CodexRpcException error) when(error.AuthenticationFailure)
         {
             log.Write("session_authentication_required","account/read",error,error.Code);
-            Interlocked.Increment(ref sessionVersion);
-            Publish(new(SessionState.SignedOut,Limits.Empty,SessionNotice.AuthenticationRequired));
+            RequireAuthentication();
         }
         catch (Exception error)
         {
-            log.Write("session_restore_failed", "account/read", error);
+            log.Write("session_restore_failed", error: error);
             restoreFailedAt = clock.GetTimestamp();
             restoreFailures++;
             var notice=error is FileNotFoundException or DirectoryNotFoundException?SessionNotice.ServerMissing:
@@ -122,45 +121,50 @@ public sealed class SessionController : IAsyncDisposable
         if (State.Session == SessionState.Connected) await RefreshAsync(true);
     }
 
-    private async Task ReadAccountAsync(ICodexClient client,bool refreshToken=false)
+    private async Task ReadAccountAsync(ICodexClient client,bool refreshToken=false,bool keepNotice=false)
     {
         var result = await client.RequestAsync("account/read", new { refreshToken }, stopping.Token);
-        if (result.ValueKind != JsonValueKind.Object || !result.TryGetProperty("account", out var account))
-            throw new IOException("La respuesta de cuenta no es válida.");
-        if (account.ValueKind == JsonValueKind.Null)
+        var account = CodexContract.ReadAccount(result);
+        retryAuthentication = false;
+        if (account is null)
         {
+            loginId = null;
             Interlocked.Increment(ref sessionVersion);
             Publish(new(SessionState.SignedOut, Limits.Empty,
                 legacyCredentials() ? SessionNotice.Migration : SessionNotice.SignIn));
             return;
         }
-        if (account.ValueKind != JsonValueKind.Object || !account.TryGetProperty("type", out var type) ||
-            type.ValueKind != JsonValueKind.String)
-            throw new IOException("La respuesta de cuenta no es válida.");
-        if (type.GetString() != "chatgpt")
+        if (account.Type != "chatgpt")
         {
             Interlocked.Increment(ref sessionVersion);
             Publish(new(SessionState.SignedOut, Limits.Empty, SessionNotice.AuthenticationRequired));
             return;
         }
-        string? email = account.TryGetProperty("email", out var value) && value.ValueKind == JsonValueKind.String ?
-            value.GetString() : null;
+        string? email = account.Email;
         var previous = State;
         bool changed = previous.Session is not (SessionState.Connected or SessionState.SigningOut or SessionState.Connecting) ||
             previous.Email != email;
         if (changed) Interlocked.Increment(ref sessionVersion);
-        SessionNotice notice = !changed && previous.Limits.Stale ? SessionNotice.Stale : SessionNotice.None;
+        SessionNotice notice = !changed && previous.Limits.Stale ?
+            keepNotice ? previous.Notice : SessionNotice.Stale : SessionNotice.None;
         loginId=null;
-        try { if (legacyCredentials()) cleanupLegacy(); cleanupFailed=false; }
+        try { cleanupLegacy(); cleanupFailed=false; }
         catch (Exception error) { cleanupFailed=true;log.Write("credential_migration_cleanup_failed", error: error); notice = SessionNotice.CleanupFailed; }
         Publish(new(SessionState.Connected, changed ? Limits.Empty : previous.Limits, notice, email, previous.LastSuccess));
+    }
+
+    private void RequireAuthentication()
+    {
+        Interlocked.Increment(ref sessionVersion);
+        retryAuthentication=true;restoreFailedAt=clock.GetTimestamp();restoreFailures++;
+        Publish(new(SessionState.SignedOut,Limits.Empty,SessionNotice.AuthenticationRequired));
     }
 
     public async Task TickAsync()
     {
         if (disposed) return;
         var snapshot = State;
-        if (snapshot.Session == SessionState.Disconnected)
+        if (snapshot.Session == SessionState.Disconnected || snapshot.Session == SessionState.SignedOut && retryAuthentication)
         {
             int[] seconds = [5, 15, 45, 135, 300];
             if (clock.GetElapsedTime(restoreFailedAt) >= TimeSpan.FromSeconds(seconds[Math.Clamp(restoreFailures - 1, 0, 4)]))
@@ -174,6 +178,7 @@ public sealed class SessionController : IAsyncDisposable
         else if (snapshot.Session == SessionState.SigningIn && connection?.IsAlive != true)
         {
             loginId = null;
+            restoreFailedAt = clock.GetTimestamp(); restoreFailures = 1;
             Publish(snapshot with { Session = SessionState.Disconnected, Notice = SessionNotice.LoginFailed });
         }
     }
@@ -196,11 +201,29 @@ public sealed class SessionController : IAsyncDisposable
 
     private async Task RefreshLoopAsync(CancellationToken cancellation)
     {
-        try
+        while (true)
         {
-            // At most one queued pass. Repeated identical server notifications are ignored.
-            for (int pass = 0; pass < 2; pass++)
+            try
             {
+                await RefreshOnceAsync(cancellation);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (Exception error) { log.Write("session_recheck_failed", error: error); }
+            lock (sync)
+            {
+                // Consume the queue and relinquish ownership atomically. A request arriving during
+                // the final pass either extends this loop or starts its own loop; none is dropped.
+                if (!cancellation.IsCancellationRequested && refreshQueued && state.Session == SessionState.Connected)
+                { refreshQueued = false; continue; }
+                refreshing = false;
+                refreshQueued = false;
+                return;
+            }
+        }
+    }
+
+    private async Task RefreshOnceAsync(CancellationToken cancellation)
+    {
                 int version = Volatile.Read(ref sessionVersion);
                 lock (sync) schedule.Started();
                 try
@@ -219,38 +242,28 @@ public sealed class SessionController : IAsyncDisposable
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
                 catch (Exception error)
                 {
-                    log.Write("session_refresh_failed", "account/rateLimits/read", error,
-                        error is CodexRpcException rpc ? rpc.Code : null);
+                    log.Write("session_refresh_failed", error: error,
+                        code: error is CodexRpcException rpc ? rpc.Code : null);
                     if (version != Volatile.Read(ref sessionVersion)) return;
                     quotaFailures++;
                     Publish(State with { Limits = State.Limits.MarkStale(), Notice =
                         error is InvalidDataException ? SessionNotice.InvalidQuotas : SessionNotice.Stale });
                     lock (sync) schedule.Failed();
-                    if (quotaFailures >= 3 || error is CodexRpcException { AuthenticationFailure: true })
+                    bool authentication = error is CodexRpcException { AuthenticationFailure: true };
+                    if (authentication || quotaFailures == 3 && (error is IOException or CodexRpcException) && error is not InvalidDataException)
                     {
                         await operationGate.WaitAsync(cancellation);
                         try
                         {
-                            try { await ReadAccountAsync(await ConnectAsync(),true); }
+                            try { await ReadAccountAsync(await ConnectAsync(),authentication,keepNotice:true); }
                             catch(CodexRpcException auth) when(auth.AuthenticationFailure)
                             {
-                                Interlocked.Increment(ref sessionVersion);
-                                Publish(new(SessionState.SignedOut,Limits.Empty,SessionNotice.AuthenticationRequired));
+                                RequireAuthentication();
                             }
                         }
                         finally { operationGate.Release(); }
                     }
                 }
-                lock (sync)
-                {
-                    if (!refreshQueued || state.Session != SessionState.Connected) break;
-                    refreshQueued = false;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (Exception error) { log.Write("session_recheck_failed", error: error); }
-        finally { lock (sync) { refreshing = false; refreshQueued = false; } }
     }
 
     private async Task CancelRefreshAsync()
@@ -284,8 +297,9 @@ public sealed class SessionController : IAsyncDisposable
             }
             else if (loginId is { } pending)
             {
-                await client.RequestAsync("account/login/cancel", new { loginId = pending }, stopping.Token);
                 loginId = null;
+                try { await client.RequestAsync("account/login/cancel", new { loginId = pending }, stopping.Token); }
+                catch (Exception error) { log.Write("login_cancel_failed", "account/login/cancel", error); }
                 Publish(new(SessionState.SignedOut, Limits.Empty, SessionNotice.SignIn));
             }
             else
@@ -296,14 +310,15 @@ public sealed class SessionController : IAsyncDisposable
                     string.IsNullOrWhiteSpace(id.GetString()))
                     throw new InvalidDataException("Inicio de sesión no válido.");
                 string pendingId = id.GetString()!;
+                bool validUrl = result.TryGetProperty("authUrl", out var text) && text.ValueKind == JsonValueKind.String &&
+                    LoginUrl.TryValidate(text.GetString(), out _);
                 try
                 {
-                    if (!result.TryGetProperty("authUrl", out var text) || text.ValueKind != JsonValueKind.String ||
-                        !LoginUrl.TryValidate(text.GetString(), out var url))
+                    if (!validUrl)
                         throw new InvalidDataException("URL de inicio de sesión no válida.");
                     // Set while holding operationGate so a fast completion cannot race browser startup.
                     loginId = pendingId;
-                    await browser(url!);
+                    await browser(new Uri(text.GetString()!));
                     Publish(new(SessionState.SigningIn, Limits.Empty, SessionNotice.LoginPending));
                 }
                 catch
@@ -311,7 +326,7 @@ public sealed class SessionController : IAsyncDisposable
                     loginId = null;
                     try { await client.RequestAsync("account/login/cancel", new { loginId = pendingId }, stopping.Token); }
                     catch (Exception error) { log.Write("login_cancel_failed", error: error); }
-                    Publish(new(SessionState.SignedOut, Limits.Empty, SessionNotice.BrowserFailed));
+                    Publish(new(SessionState.SignedOut, Limits.Empty, validUrl ? SessionNotice.BrowserFailed : SessionNotice.LoginFailed));
                     throw;
                 }
             }
@@ -331,35 +346,39 @@ public sealed class SessionController : IAsyncDisposable
         if (State.Session == SessionState.Connected) await RefreshAsync(true);
     }
 
-    private void Notification(ICodexClient source, string method, JsonElement args)
+    private void Notification(ICodexClient source, string method, JsonElement args) =>
+        Observe(HandleNotificationAsync(source,method,args));
+
+    internal Task HandleNotificationAsync(ICodexClient source, string method, JsonElement args)
     {
-        if (disposed || source != connection) return;
+        if (disposed || source != connection) return Task.CompletedTask;
         try
         {
             if (method == "account/rateLimits/updated")
             {
                 var parsed = QuotaParser.Parse(args);
-                if (parsed.Kind == ParseKind.Valid && parsed.Limits == State.Limits with { Stale = false }) return;
+                if (parsed.Kind == ParseKind.Valid && parsed.Limits == State.Limits with { Stale = false }) return Task.CompletedTask;
                 lock (sync)
                 {
-                    if (notificationSeen && clock.GetElapsedTime(lastNotification) < TimeSpan.FromSeconds(5)) return;
+                    if (notificationSeen && clock.GetElapsedTime(lastNotification) < TimeSpan.FromSeconds(5)) return Task.CompletedTask;
                     notificationSeen = true; lastNotification = clock.GetTimestamp();
                 }
-                Observe(RefreshAsync(true));
+                return RefreshAsync(true);
             }
             else if (method == "account/updated")
             {
                 lock (sync)
                 {
-                    if (accountNotificationSeen && clock.GetElapsedTime(lastAccountNotification) < TimeSpan.FromSeconds(5)) return;
+                    if (accountNotificationSeen && clock.GetElapsedTime(lastAccountNotification) < TimeSpan.FromSeconds(5)) return Task.CompletedTask;
                     accountNotificationSeen = true; lastAccountNotification = clock.GetTimestamp();
                 }
-                Observe(RecheckAsync(source));
+                return RecheckAsync(source);
             }
             else if (method == "account/login/completed")
-                Observe(CompleteLoginAsync(source, args));
+                return CompleteLoginAsync(source, args);
         }
         catch (Exception error) { log.Write("notification_invalid", method, error); }
+        return Task.CompletedTask;
     }
 
     private async Task RecheckAsync(ICodexClient source)
@@ -372,6 +391,7 @@ public sealed class SessionController : IAsyncDisposable
             await CancelRefreshAsync();
             await ReadAccountAsync(source);
         }
+        catch(CodexRpcException error) when(error.AuthenticationFailure) { RequireAuthentication(); }
         finally { operationGate.Release(); }
         if (State.Session == SessionState.Connected) await RefreshAsync(true);
     }
@@ -383,9 +403,10 @@ public sealed class SessionController : IAsyncDisposable
         {
             if (source != connection || disposed || loginId is null || args.ValueKind != JsonValueKind.Object ||
                 !args.TryGetProperty("loginId", out var id) || id.ValueKind != JsonValueKind.String ||
-                id.GetString() != loginId) return;
+                id.GetString() != loginId || !args.TryGetProperty("success", out var success) ||
+                success.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return;
             loginId = null;
-            if (!args.TryGetProperty("success", out var success) || success.ValueKind is not JsonValueKind.True)
+            if (success.ValueKind is not JsonValueKind.True)
             {
                 bool storage=args.TryGetProperty("error",out var error) && error.ValueKind==JsonValueKind.String &&
                     CodexRpcException.IsCredentialStorageFailure(error.GetString()!);
@@ -393,7 +414,19 @@ public sealed class SessionController : IAsyncDisposable
                 Publish(new(SessionState.SignedOut, Limits.Empty,
                     storage?SessionNotice.CredentialStoreUnavailable:SessionNotice.LoginFailed));
             }
-            else await ReadAccountAsync(source);
+            else
+            {
+                try { await ReadAccountAsync(source); }
+                catch(CodexRpcException error) when(error.AuthenticationFailure) { RequireAuthentication(); }
+                catch(OperationCanceledException) when(stopping.IsCancellationRequested) { }
+                catch(Exception error)
+                {
+                    log.Write("login_account_read_failed","account/read",error);
+                    restoreFailedAt=clock.GetTimestamp();restoreFailures=1;
+                    Publish(new(SessionState.Disconnected,Limits.Empty,error is CodexRpcException {CredentialStorageFailure:true}?
+                        SessionNotice.CredentialStoreUnavailable:SessionNotice.LoginFailed));
+                }
+            }
         }
         finally { operationGate.Release(); }
         if (State.Session == SessionState.Connected) await RefreshAsync(true);

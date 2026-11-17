@@ -54,9 +54,11 @@ public static class QuotaParser
         {
             if (!snapshot.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
                 return null;
-            if (value.ValueKind != JsonValueKind.Object ||
-                !value.TryGetProperty("windowDurationMins", out var duration) ||
-                !duration.TryGetInt32Safe(out int minutes) || minutes <= 0 ||
+            if (value.ValueKind != JsonValueKind.Object) { invalid = true; return null; }
+            // A duration-less window cannot be attributed to either supported cycle.
+            if (!value.TryGetProperty("windowDurationMins", out var duration) || duration.ValueKind == JsonValueKind.Null)
+                return null;
+            if (!duration.TryGetInt32Safe(out int minutes) || minutes <= 0 ||
                 !value.TryGetProperty("usedPercent", out var percent) ||
                 percent.ValueKind != JsonValueKind.Number || !percent.TryGetDouble(out double used) ||
                 !double.IsFinite(used))

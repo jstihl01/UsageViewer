@@ -12,7 +12,8 @@ public sealed class RealServerFactAttribute:FactAttribute
 {
     public RealServerFactAttribute()
     {
-        if(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("USAGEVIEWER_CODEX_BINARY")))
+        if(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("USAGEVIEWER_CODEX_BINARY")) &&
+            !string.Equals(Environment.GetEnvironmentVariable("CI"),"true",StringComparison.OrdinalIgnoreCase))
             Skip="SKIP: servidor real; definir USAGEVIEWER_CODEX_BINARY para ejecutar la integración.";
     }
 }

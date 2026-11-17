@@ -19,6 +19,17 @@ public class ShellTests
         using var signal=new EventWaitHandle(false,EventResetMode.AutoReset,name+"-event");
         WaitHandleSecurity.Restrict(mutex,identity.User!.Value);
         WaitHandleSecurity.Restrict(signal,identity.User.Value);
+        foreach(var handle in new WaitHandle[]{mutex,signal})
+        {
+            NativeMethods.GetKernelObjectSecurity(handle.SafeWaitHandle.DangerousGetHandle(),4,null,0,out uint needed);
+            var bytes=new byte[needed];
+            Assert.True(NativeMethods.GetKernelObjectSecurity(handle.SafeWaitHandle.DangerousGetHandle(),4,bytes,needed,out _));
+            var descriptor=new System.Security.AccessControl.RawSecurityDescriptor(bytes,0);
+            Assert.True(descriptor.ControlFlags.HasFlag(System.Security.AccessControl.ControlFlags.DiscretionaryAclProtected));
+            Assert.Equal(2,descriptor.DiscretionaryAcl!.Count);
+            var sids=descriptor.DiscretionaryAcl.Cast<System.Security.AccessControl.CommonAce>().Select(ace=>ace.SecurityIdentifier.Value).ToArray();
+            Assert.Equal(new[]{"S-1-5-18",identity.User.Value}.Order(),sids.Order());
+        }
         using var reopened=EventWaitHandle.OpenExisting(name+"-event");
         reopened.Set();Assert.True(signal.WaitOne(1000));
         Assert.True(mutex.WaitOne(1000));mutex.ReleaseMutex();
@@ -88,7 +99,10 @@ public class ShellTests
     [Fact] public void GuidFailureFallsBackToWindowIdentityAndUsesSameIdentityForBounds()
     {
         var shell=new FakeShell { RejectGuid=true };
-        using var registration=new TrayRegistration(shell,new(1),Guid.NewGuid(),NullLog.Instance);
+        var time=new FakeTimeProvider();
+        using var registration=new TrayRegistration(shell,new(1),Guid.NewGuid(),NullLog.Instance,time);
+        Assert.False(registration.Update(new(1),"first",true));
+        Assert.True(registration.UsesGuid);time.Advance(TimeSpan.FromSeconds(5));
         Assert.True(registration.Update(new(1),"first",true));
         Assert.False(registration.UsesGuid);
         registration.TryGetBounds(out _);

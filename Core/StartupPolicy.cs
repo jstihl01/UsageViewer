@@ -1,4 +1,4 @@
-namespace UsageViewer;
+namespace UsageViewer.Core;
 
 internal static class StartupPolicy
 {

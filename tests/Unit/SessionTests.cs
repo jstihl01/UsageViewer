@@ -6,7 +6,7 @@ using Xunit;
 
 namespace UsageViewer.Core.Tests;
 
-public class SessionTests
+public partial class SessionTests
 {
     private static readonly JsonElement SignedIn=Json("""{"account":{"type":"chatgpt","email":"test@example.invalid"}}""");
     private static JsonElement Json(string value)=>JsonDocument.Parse(value).RootElement.Clone();
@@ -125,6 +125,7 @@ public class SessionTests
         await controller.RestoreAsync();await controller.ChangeSessionAsync();
         Assert.Contains("account/login/cancel",client.Methods);
         Assert.Equal(SessionState.SignedOut,controller.State.Session);
+        Assert.Equal(SessionNotice.LoginFailed,controller.State.Notice);
     }
     [Fact] public async Task MalformedLoginNotificationsDoNotCrashOrChangeSession()
     {
@@ -166,7 +167,8 @@ public class SessionTests
         int before=client.Methods.Count(x=>x=="account/read");
         for(int i=0;i<100;i++)client.Notify("account/updated",Json("{}"));
         await controller.RefreshAsync();
-        Assert.InRange(client.Methods.Count(x=>x=="account/read")-before,0,1);
+        await WaitUntilAsync(()=>client.Methods.Count(x=>x=="account/read")>before);
+        Assert.Equal(1,client.Methods.Count(x=>x=="account/read")-before);
     }
     [Fact] public async Task FailedLogoutRetainsConfirmedAccountAndItsLastValidQuota()
     {

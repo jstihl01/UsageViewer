@@ -115,7 +115,14 @@ var
 begin
   Result := True;
   Sid := CurrentSid();
+  if Sid = '' then begin
+    Log('No se pudo determinar el usuario de Windows; actualización cancelada.');
+    Result := False;
+    if not WizardSilent then MsgBox('No se pudo identificar tu sesión de Windows. Reintenta la instalación.', mbError, MB_OK);
+    exit;
+  end;
   WasRunning := (Sid <> '') and CheckForMutexes('Local\UsageViewer-' + Sid);
+  if WasRunning then Log('UsageViewer detected running: yes') else Log('UsageViewer detected running: no');
   if not RegQueryStringValue(HKCU64,
     'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6EA022B1-87BA-4789-9350-207885B9F439}_is1',
     'InstallLocation', PreviousPath) then PreviousPath := '';
@@ -123,7 +130,10 @@ begin
   if WasRunning and FileExists(ProgramFile) and GetVersionNumbers(ProgramFile, MajorMinor, BuildRevision) then begin
     if ((MajorMinor shr 16) > 1) or (((MajorMinor shr 16) = 1) and ((MajorMinor and $FFFF) >= 1)) then begin
       Result := Exec(ProgramFile, '--shutdown', PreviousPath, SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
-      if not Result then MsgBox('No se pudo cerrar Usage Viewer. Ciérralo desde su icono y vuelve a intentarlo.', mbError, MB_OK);
+      if not Result then begin
+        Log('No se pudo cerrar Usage Viewer. Código: ' + IntToStr(Code));
+        if not WizardSilent then MsgBox('No se pudo cerrar Usage Viewer. Ciérralo desde su icono y vuelve a intentarlo.', mbError, MB_OK);
+      end;
     end;
   end;
 end;
@@ -153,8 +163,23 @@ end;
 function InitializeUninstall(): Boolean;
 var
   Code: Integer;
+  ProgramFile, Reason, Instructions: String;
 begin
-  Result := Exec(ExpandConstant('{app}\UsageViewer.exe'), '--uninstall-cleanup',
-    ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
-  if not Result then MsgBox('No se pudieron cerrar la aplicación y limpiar sus credenciales. La desinstalación se ha detenido.', mbError, MB_OK);
+  Code := -1;
+  ProgramFile := ExpandConstant('{app}\UsageViewer.exe');
+  Result := False;
+  if not FileExists(ProgramFile) then Reason := 'Falta UsageViewer.exe.'
+  else if not Exec(ProgramFile, '--uninstall-cleanup', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then
+    Reason := 'No se pudo ejecutar la limpieza.'
+  else if Code = 2 then Reason := 'La aplicación no se pudo cerrar.'
+  else if Code <> 0 then Reason := 'No se pudo completar la limpieza de credenciales.'
+  else Result := True;
+  if not Result then begin
+    Instructions := 'Reinstala Usage Viewer en la misma carpeta y vuelve a desinstalar para retirar sus credenciales. ' +
+      'Consulta PRIVACIDAD.md: Limpieza manual. No retires entradas de otras instalaciones de Codex.';
+    Log(Reason + ' Código: ' + IntToStr(Code) + '. ' + Instructions);
+    if not UninstallSilent then
+      Result := MsgBox(Reason + #13#10 + 'Puedes continuar, pero podrían quedar credenciales de Usage Viewer en Windows.' +
+        '' + #13#10 + Instructions + #13#10 + '¿Desinstalar de todos modos?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+  end;
 end;

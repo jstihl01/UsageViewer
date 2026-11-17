@@ -58,16 +58,30 @@ public class TrayRecoveryTests
     [Fact] public void InitialFallbackCannotAddUntilTheGuidCandidateHasBeenRetired()
     {
         var shell=new IdentityShell {GuidFailures=3};
-        using var registration=new TrayRegistration(shell,new(1),Guid.NewGuid(),NullLog.Instance);
+        var time=new FakeTimeProvider();
+        using var registration=new TrayRegistration(shell,new(1),Guid.NewGuid(),NullLog.Instance,time);
+        Assert.False(registration.Update(new(1),"UsageViewer",true));
+        shell.GuidFailures=2;time.Advance(TimeSpan.FromSeconds(5));
         Assert.True(registration.Update(new(1),"UsageViewer",true));
         Assert.False(registration.UsesGuid);
         Assert.Single(shell.Icons);
         Assert.Equal(1,shell.MaximumIcons);
     }
+    [Fact] public void ExplorerUnavailableAtStartupRetainsGuidUntilExplorerIsReady()
+    {
+        var shell=new IdentityShell {Ready=false,GuidFailures=100};var time=new FakeTimeProvider();
+        using var registration=new TrayRegistration(shell,new(1),Guid.NewGuid(),NullLog.Instance,time);
+        for(int i=0;i<3;i++)
+        { Assert.False(registration.Update(new(1),"UsageViewer",true));Assert.True(registration.UsesGuid);time.Advance(TimeSpan.FromSeconds(5)); }
+        shell.Ready=true;shell.GuidFailures=0;registration.ExplorerRestarted();
+        Assert.True(registration.Update(new(1),"UsageViewer",true));Assert.True(registration.UsesGuid);Assert.Single(shell.Icons);
+    }
     private sealed class IdentityShell:ITrayShell
     {
         public readonly HashSet<string> Icons=new();
         public int GuidFailures,MaximumIcons;
+        public bool Ready=true;
+        public bool Available=>Ready;
         private static string Key(IntPtr window,uint id,Guid guid)=>guid==Guid.Empty?$"{window}:{id}":guid.ToString();
         public bool Notify(uint operation,ref NativeMethods.IconData data)
         {

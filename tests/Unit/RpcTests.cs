@@ -35,6 +35,11 @@ public class RpcTests
         await pipe.Writer.WriteLineAsync(JsonSerializer.Serialize(new { id,error=new { code=401,message="unauthorized" } }));
         var error=await Assert.ThrowsAsync<CodexRpcException>(()=>request);
         Assert.Equal(401,error.Code);Assert.Equal("unauthorized",error.RemoteMessage);Assert.True(error.AuthenticationFailure);
+        Assert.True(pipe.Rpc.IsAlive);
+        var next=pipe.Rpc.RequestAsync("account/rateLimits/read",null,default);
+        int nextId=await pipe.ReadId();
+        await pipe.Writer.WriteLineAsync(JsonSerializer.Serialize(new { id=nextId,result=new{} }));
+        await next.WaitAsync(TimeSpan.FromSeconds(3));
     }
     [Fact] public async Task ServerRequestCannotCompleteClientRequestWithSameId()
     {
@@ -63,10 +68,11 @@ public class RpcTests
         var time=new FakeTimeProvider();
         await using var pipe=await Peer.Create(time);
         var a=pipe.Rpc.RequestAsync("account/read",null,default);await pipe.ReadId();
+        time.Advance(TimeSpan.FromSeconds(10));
         var b=pipe.Rpc.RequestAsync("account/rateLimits/read",null,default);await pipe.ReadId();
-        time.Advance(TimeSpan.FromSeconds(25));
-        await Assert.ThrowsAnyAsync<Exception>(()=>a);
-        await Assert.ThrowsAnyAsync<Exception>(()=>b);
+        time.Advance(TimeSpan.FromSeconds(15));
+        await Assert.ThrowsAsync<TimeoutException>(()=>a);
+        await Assert.ThrowsAnyAsync<IOException>(()=>b);
         Assert.False(pipe.Rpc.IsAlive);
         await Assert.ThrowsAsync<IOException>(()=>pipe.Rpc.RequestAsync("account/read",null,default));
     }
@@ -92,6 +98,14 @@ public class RpcTests
         await Assert.ThrowsAsync<InvalidDataException>(async()=>
         { await foreach(var _ in BoundedLines.ReadAsync(stream,JsonRpcClient.MaximumMessageBytes,default)) { } });
     }
+    [Fact] public async Task OversizedMessageThroughRpcFailsPendingRequestAndClosesTransport()
+    {
+        await using var pipe=await Peer.Create();
+        var request=pipe.Rpc.RequestAsync("account/read",null,default);await pipe.ReadId();
+        await pipe.Writer.WriteLineAsync(new string('x',JsonRpcClient.MaximumMessageBytes+1));
+        await Assert.ThrowsAnyAsync<IOException>(()=>request.WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.False(pipe.Rpc.IsAlive);
+    }
     [Fact] public async Task ConcurrentWritesAreCompleteJsonMessages()
     {
         await using var pipe=await Peer.Create();
@@ -102,6 +116,22 @@ public class RpcTests
             await pipe.Writer.WriteLineAsync(JsonSerializer.Serialize(new { id,result=new{} }));
         }
         await Task.WhenAll(requests).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    [Fact] public async Task BlockedTransportWriteIsCancelledByTheExactRpcDeadline()
+    {
+        var time=new FakeTimeProvider();using var stream=new BlockedStream();
+        await using var rpc=new JsonRpcClient(stream,stream,clock:time);
+        var request=rpc.RequestAsync("account/read",null,default);
+        time.Advance(TimeSpan.FromSeconds(25));
+        await Assert.ThrowsAsync<TimeoutException>(()=>request.WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.False(rpc.IsAlive);
+    }
+    private sealed class BlockedStream:MemoryStream
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer,CancellationToken cancellationToken=default)
+        {await Task.Delay(Timeout.InfiniteTimeSpan,cancellationToken);return 0;}
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer,CancellationToken cancellationToken=default)=>
+            await Task.Delay(Timeout.InfiniteTimeSpan,cancellationToken);
     }
     private sealed class Peer: IAsyncDisposable
     {

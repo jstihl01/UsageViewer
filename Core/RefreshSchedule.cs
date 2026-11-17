@@ -10,20 +10,17 @@ public sealed class RefreshSchedule(TimeProvider? time = null)
     private int failures;
     private sealed record PendingReset(DateTimeOffset Reset,long Since);
     private PendingReset? shortWaiting,weeklyWaiting;
-    private bool forced;
 
-    public bool IsDue(Limits limits) => forced || !started ||
+    public bool IsDue(Limits limits) => !started ||
         clock.GetElapsedTime(checkedAt) >= interval ||
         Crossed(limits.Short) || Crossed(limits.Weekly);
 
     private bool Crossed(Cycle? cycle) =>
         cycle?.Reset is { } reset && reset > checkedWall && reset <= clock.GetUtcNow();
 
-    public void Force() => forced = true;
     public void Started()
     {
         started = true;
-        forced = false;
         checkedAt = clock.GetTimestamp();
         checkedWall = clock.GetUtcNow();
         interval = TimeSpan.FromSeconds(60);

@@ -21,7 +21,7 @@ internal static class UsageText
         SessionNotice.ServerIntegrity=>"El servidor de Codex no supera la comprobación de integridad. Reinstala Usage Viewer.",
         SessionNotice.CredentialStoreUnavailable=>"No se pudo guardar o leer tu sesión de forma segura en Windows. Consulta los registros.",
         SessionNotice.SignIn=>"Inicia sesión con ChatGPT para ver tu uso de Codex.",
-        SessionNotice.Migration=>"Para proteger tu sesión, inicia sesión una vez más. Se guardará en el almacén seguro de Windows.",
+        SessionNotice.Migration=>"Inicia sesión una vez más para proteger tu sesión. El archivo antiguo permanece en el perfil hasta confirmar el nuevo acceso.",
         SessionNotice.LoginPending=>"Completa el inicio de sesión en tu navegador.",
         SessionNotice.LoginFailed=>"No se pudo completar la operación. Vuelve a intentarlo.",
         SessionNotice.BrowserFailed=>"No se pudo abrir el inicio de sesión en el navegador. Vuelve a intentarlo.",
@@ -32,7 +32,6 @@ internal static class UsageText
         SessionNotice.Stale=>view.LastSuccess is {} last?
             "Datos desactualizados. Última lectura: "+last.ToLocalTime().ToString("HH:mm",Spanish)+". Reintentando…":
             "No se pudieron leer las cuotas. Reintentando…",
-        SessionNotice.UnexpectedError=>"Se produjo un error inesperado. Consulta los registros.",
         _=>""
     };
 }

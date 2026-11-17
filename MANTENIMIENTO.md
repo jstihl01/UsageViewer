@@ -1,45 +1,65 @@
 # Mantenimiento y publicación
 
-Responsable: **jstihl01**. Versión de esta revisión: **1.1.2**.
+Responsable: **jstihl01**. Versión de esta revisión: **1.1.3**.
 
-## Dependencias
+## Componentes
 
-- Cada semana: revisar las publicaciones y avisos de seguridad de Codex. Mantener inicialmente 0.167.0; cualquier cambio de binario exige nuevo digest oficial, firma del proveedor, revisión del protocolo y pruebas de integración.
-- Cada mes, tras los parches de Microsoft: revisar .NET 10 LTS y actualizar juntos SDK, runtime y bloqueos. No publicar una versión nueva con un parche anterior al vigente de la rama elegida.
-- Ante un aviso de seguridad aplicable: priorizar actualización, compilación y nueva publicación.
-- Inno Setup y las herramientas de CI se fijan por versión y hash. Las acciones se fijan por SHA de commit.
+- Cada semana: revisar las publicaciones y avisos de seguridad de Codex. Cualquier cambio exige digest oficial, firma del proveedor, revisión de `CodexContract`, esquema de cuenta/configuración y pruebas de integración.
+- Cada mes, tras los parches de Microsoft: actualizar juntos SDK, runtime, `global.json`, `dependencies.json`, `RuntimeFrameworkVersion`, avisos y bloqueos. No publicar con un parche anterior al vigente de la rama elegida.
+- Ante un aviso de seguridad aplicable: priorizar el parche. Producción siempre bloquea vulnerabilidades. Una excepción solo de pruebas debe incluir `package`, `project`, `advisory`, `reason` y `expires` UTC en `dependency-audit-exceptions.json`, con revisión explícita y caducidad; ninguna está activa. No se ocultan avisos ni fallos de restauración.
+- Dependabot revisa SDK, proyectos NuGet y acciones. Weekly dependency review compara cada lunes SDK/runtime/Codex/Inno y audita NuGet; mantiene una incidencia si requiere revisión, sin actualizar pines automáticamente.
+- Planificar xUnit v3 como trabajo separado en la próxima revisión de pruebas: actualizar runner/atributos y conservar el inventario y cero omitidas. xUnit v2 solo se usa en pruebas y no se distribuye.
 
-El digest de Codex procede de los metadatos de la publicación **rust-v0.167.0** de OpenAI; el binario validado está firmado por **OpenAI OpCo, LLC**. El compilador fijado está firmado por **Pyrsys B.V.**. Su campo FileVersion no es una fuente fiable de versión; la comprobación usa su huella y procedencia.
+Las herramientas se descargan a `.partial`, verifican y mueven. Codex 0.167.0 está firmado por **OpenAI OpCo, LLC**; Inno 6.7.4 por **Pyrsys B.V.**. Se comprueban también los stubs de Inno. La caché del SDK conserva el hash del ZIP autenticado y se contrastan el host y componentes ejecutados contra ese ZIP. Los runtimes llevan SHA-512 y firma NuGet obligatoria; el contenido publicado se coteja contra sus paquetes. Al rotar certificados de nuget.org hay que actualizar las huellas desde su endpoint oficial de RepositorySignatures, sin desactivar la verificación.
 
-Desde 1.1.1 se fija **features.secret_auth_storage=true**, con **cli_auth_credentials_store=keyring**. Revisar especialmente las implementaciones oficiales login/src/auth/storage.rs y secrets/src/{lib,local}.rs al actualizar Codex. La prueba de 16.000 caracteres, su reinicio, aislamiento y ausencia de fallback son obligatorios: una clave corta no cubre la sesión OAuth de ChatGPT.
+El backend de sesión exige **keyring** y **secret_auth_storage**. Revisar `login/src/auth/storage.rs` y `secrets/src/{lib,local}.rs` al cambiar Codex. La prueba sintética de 16.000 caracteres usa **apiKey**: no acredita OAuth de ChatGPT, callback ni renovación. El fallo provocado bloquea el archivo cifrado, no el Administrador de credenciales. Deben completarse MAN-04, MAN-05 y MAN-29 con una cuenta real antes de promover a estable.
 
-Desde 1.1.2 las pruebas de bandeja deben distinguir los registros GUID y HWND, en lugar de reducirlos a una existencia booleana. Mantener la identidad elegida durante la recuperación. Las pruebas del menú deben cargar los recursos al nivel real de Application: un diccionario local no reproduce cómo WPF aplica estilos implícitos al texto de sus plantillas.
+Las pruebas de bandeja deben distinguir GUID y HWND. No restablecer el GUID tras establecer una identidad: puede reintroducir duplicados. Para el menú, cargar recursos al nivel real de Application; un diccionario local no reproduce los estilos implícitos de las plantillas WPF.
 
-Los avisos de .NET se extraen de los paquetes runtime exactos. WindowsDesktop no aporta un archivo separado de avisos en este paquete: se añaden los oficiales de las revisiones WPF y WinForms correspondientes a 10.0.15, con URL y huella fijadas. Se conservan los avisos realmente suministrados y su inventario. Codex incluye LICENSE y NOTICE de la etiqueta fijada; la comprobación no acredita una auditoría exhaustiva de todas las dependencias Rust enlazadas.
+Los avisos .NET proceden de los paquetes exactos y de los commits WPF/WinForms fijados. Codex incluye LICENSE/NOTICE de su etiqueta. La completitud de avisos de todas las dependencias Rust sigue sin constituir una auditoría exhaustiva.
 
-## Publicar
+## Preparar y verificar una entrega
 
-1. Actualizar la única versión central y los pines necesarios.
-2. Ejecutar compilación, xUnit, integración con perfiles ficticios, auditoría NuGet, análisis de secretos y las tres mutaciones de regresión.
-3. Revisar la matriz de observaciones y los resultados manuales disponibles.
-4. Crear un borrador con el instalador, SHA-256, inventario, SBOM, procedencia y notas de migración.
-5. Confirmar tamaños y hashes de los archivos recibidos por GitHub. Solo entonces publicar como última versión estable.
-6. Comprobar la descarga del botón del README. Su nombre de archivo se mantiene estable entre versiones.
+1. Trabajar en un clon Git limpio. Actualizar la versión central y las cabeceras de notas, migración, comprobaciones y matrices.
+2. Ejecutar `tools/Test-Lockfiles.ps1 -Update` si cambian versiones/proyectos; revisar el diff. CI regenera, compara y restaura con `--locked-mode`.
+3. Ejecutar `build.ps1`, las once mutaciones y el escáner de secretos. TRX: mínimo por suite, cero omitidas/fallos y límite de cuelgue de dos minutos. El humo del instalador solo puede correr con `GITHUB_ACTIONS=true` en un runner efímero, nunca sobre la instalación del usuario.
+4. Revisar ambas matrices y las comprobaciones manuales. Los resultados pendientes no se convierten en superados por tener CI verde.
+5. Lanzar **Windows release**. El trabajo de compilación solo tiene lectura; el trabajo de publicación descarga su artefacto, verifica origen/huella, atesta y prepara el borrador. `environment: release` permite configurar revisores obligatorios desde GitHub; no se afirma que esa protección externa esté configurada.
+6. Por defecto se publica como **preliminar** y no cambia `latest`. El ZIP de evidencia, matrices, instalador, SHA, inventario y SBOM se adjuntan y verifican. El ZIP de pruebas queda también bajo atestación; los artefactos temporales de Actions caducan.
+7. Para promover a estable, completar la validación manual y ejecutar el flujo con `stable=true`. El publicador bloquea pendientes; una excepción consciente exigiría `-AcceptPendingManualChecks` explícito, que el workflow ordinario no pasa. No usar esta excepción para presentar OAuth como probado.
 
-El build usa una carpeta nueva. El instalador solo retira archivos sobrantes de 1.0.15 si coinciden con las huellas del inventario de esa versión, sin borrar archivos ajenos de la carpeta de instalación.
+`Publish-Release.ps1` tiene tres modos:
 
-## Firma digital
+- `-Mode Prepare`: sube o reanuda el borrador y verifica todos los activos.
+- `-Mode Publish`: verifica el borrador y lo publica como preliminar. `-Stable` solicita la promoción con la guarda manual anterior.
+- `-Mode Verify`: comprueba tamaños, SHA-256, etiqueta y commit de una entrega descargada en `dist`; no exige HEAD igual al del artefacto histórico, pero sí versión y procedencia coherentes.
 
-DEP-01 permanece **aplazada por decisión expresa**. No se contrata ni registra ningún servicio.
+Prepare/Publish solo aceptan un artefacto limpio del mismo flujo oficial de Actions. Verify usa `GITHUB_TOKEN` o la sesión de Git guardada para GitHub; no imprime el token. Para verificación pública criptográfica:
 
-La preparación de firma acepta una identidad existente mediante la huella pública de su certificado y SignTool. Firma los binarios propios y permite que Inno Setup firme instalador y desinstalador. Las claves privadas no se crean, exportan ni guardan en el repositorio. Un build sin identidad permanece explícitamente sin firma.
+    gh attestation verify .\UsageViewer-Setup-x64.exe --repo jstihl01/UsageViewer --signer-workflow jstihl01/UsageViewer/.github/workflows/release.yml
+    gh attestation verify .\UsageViewer-pruebas.zip --repo jstihl01/UsageViewer --signer-workflow jstihl01/UsageViewer/.github/workflows/release.yml
 
-El SHA-256 comprueba integridad. La atestación de GitHub relaciona el artefacto con su compilación y código. Ninguno sustituye por sí solo Authenticode ni garantiza la reputación de SmartScreen.
+Comparar commit y etiqueta con la publicación. `Get-FileHash` verifica integridad, no acredita por sí solo la identidad del editor.
 
-El mantenedor debe proteger su cuenta con doble factor y restringir las etiquetas/publicaciones desde GitHub. Son operaciones del propietario de la cuenta y no se dan por realizadas en esta revisión.
+## Limpieza de versiones anteriores
 
-## Segunda revisión y reservas
+Los inventarios 1.1.0, 1.1.1 y 1.1.2 están en `installer/legacy`; 1.0.15 conserva el inventario histórico separado. Para cada nueva versión estable, ejecutar `tools/Import-LegacyManifest.ps1 -Version X.Y.Z`: descarga el inventario público y verifica su digest antes de añadirlo. `New-LegacyCleanup.ps1` genera el borrado de sobrantes de todos los inventarios. Solo retira archivos cuyo hash coincida; nunca borra por nombre o directorio completo ni toca archivos ajenos. El inventario antiguo no demuestra por sí solo ejecución de una actualización desde esa versión.
 
-Revisar cada fila de AUDITORIA.md contra su prueba o evidencia. No cerrar por inspección estática los escenarios de escritorio, la autenticación con una cuenta real ni la completitud de los avisos de dependencias nativas de terceros.
+## Retirar una versión
 
-Las comprobaciones manuales se delegan íntegramente al usuario; no se instala ni desinstala en una VM o escritorio real para simular que ya han sido validadas.
+Ante una regresión, añadir a sus notas una advertencia y marcarla preliminar, sin reemplazar sus archivos inmutables:
+
+    gh release edit vX.Y.Z --repo jstihl01/UsageViewer --prerelease
+    gh release edit vPREVIA --repo jstihl01/UsageViewer --latest
+
+Verificar el endpoint `/releases/latest`, la descarga del botón y la atestación de la estable elegida. Si hay que retirar un archivo dañino, guardar primero su hash/evidencia y documentar la retirada; no sustituirlo silenciosamente. Publicar la corrección con otra versión.
+
+El aviso de actualización ignora preliminares y versiones anteriores. Para volver atrás el usuario descarga la versión elegida e instala después de cerrar la app. Volver desde 1.1.3 a 1.1.1/1.1.2 conserva el formato cifrado; **no recomendar 1.1.0**, cuyo backend no admite algunos tokens largos. Bajar a 1.0.15 pierde compatibilidad con el formato protegido y exige un nuevo acceso; no exportar tokens a claro para conservar sesión.
+
+## Firma y límites
+
+DEP-01 permanece **aplazada por decisión expresa**. La firma de la ruta oficial de Actions **no está implementada** hasta elegir una identidad válida y un runner/servicio apropiado. `Sign-Release.ps1` es un auxiliar local que requiere un certificado y SignTool ya instalados; no genera ni exporta claves privadas. No se han contratado servicios ni creado certificados.
+
+SHA-256 y atestaciones no sustituyen Authenticode ni garantizan reputación de SmartScreen. Proteger cuenta, ramas, etiquetas y el entorno release desde GitHub es una tarea del propietario; no se da por realizada.
+
+Las comprobaciones manuales se delegan al usuario. El humo de CI no acredita el inicio/renovación real de ChatGPT, suspensión, DPI, contraste humano ni el comportamiento completo en Windows 11.

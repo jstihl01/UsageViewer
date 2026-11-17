@@ -3,6 +3,8 @@ param([string]$Compiler="$PSScriptRoot/.build/InnoSetup/ISCC.exe",
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 Set-Location $PSScriptRoot
+. "$PSScriptRoot/tools/Build-Validation.ps1"
+Assert-GitCheckout $PSScriptRoot
 $env:DOTNET_CLI_HOME=Join-Path $PSScriptRoot '.build\dotnet-home'
 $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH='false'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
@@ -16,6 +18,11 @@ $dotnet=Join-Path $PSScriptRoot '.build\dotnet\dotnet.exe'
 $pins=Get-Content dependencies.json -Raw | ConvertFrom-Json
 if((& $dotnet --version).Trim() -ne $pins.sdk.version) { throw 'El SDK activo no coincide con la versión fijada.' }
 $version=([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+Assert-VersionDocuments $PSScriptRoot $version
+& "$PSScriptRoot/tools/Test-BuildValidation.ps1"
+$runtimeProperty=([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.RuntimeFrameworkVersion
+if($runtimeProperty -ne $pins.runtime){throw 'Actualiza RuntimeFrameworkVersion en Directory.Build.props para que coincida con dependencies.json.'}
+if((Get-Content global.json -Raw|ConvertFrom-Json).sdk.version -ne $pins.sdk.version){throw 'El SDK de global.json no coincide con dependencies.json.'}
 $source=(& git rev-parse HEAD).Trim()
 $sourceDirty=[bool](& git status --porcelain --untracked-files=normal)
 $beforeAssets=@{}
@@ -29,13 +36,18 @@ function Run-Dotnet([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arg
 $projects=@('src/UsageViewer.csproj','tests/Unit/UsageViewer.Core.Tests.csproj',
     'tests/Windows/UsageViewer.Windows.Tests.csproj','tests/Integration/UsageViewer.Integration.Tests.csproj',
     'tests/ProcessFixture/ProcessFixture.csproj')
-foreach($project in $projects) { Run-Dotnet @('restore',$project,'--locked-mode','-r','win-x64') }
+foreach($project in $projects) { Run-Dotnet @('restore',$project,'--locked-mode','-r','win-x64','--configfile','NuGet.config') }
 Run-Dotnet @('build','tests/ProcessFixture/ProcessFixture.csproj','-c','Release','--no-restore','-r','win-x64')
 $env:USAGEVIEWER_CODEX_BINARY=Join-Path $PSScriptRoot '.build\codex-app-server.exe'
 $env:USAGEVIEWER_PROCESS_FIXTURE=Join-Path $PSScriptRoot 'tests\ProcessFixture\bin\Release\net10.0-windows\win-x64\ProcessFixture.exe'
-foreach($project in $projects[1..3]) {
+$results=Join-Path $PSScriptRoot ('.build/test-results/'+$version)
+$minimums=@(109,34,10)
+for($index=1;$index -le 3;$index++) {
+    $project=$projects[$index]
+    $resultName=[IO.Path]::GetFileNameWithoutExtension($project)+'.trx'
     Run-Dotnet @('test',$project,'-c','Release','--no-restore','-r','win-x64',
-        '--logger','trx','--results-directory',"$PSScriptRoot/.build/test-results")
+        '--blame-hang-timeout','2m','--logger',"trx;LogFileName=$resultName",'--results-directory',$results)
+    Assert-TestResults (Join-Path $results $resultName) $minimums[$index-1]
 }
 $audits=@()
 foreach($project in $projects) {
@@ -45,11 +57,25 @@ foreach($project in $projects) {
     $audits+=@{project=$project;result=$audit}
     foreach($framework in $audit.projects.frameworks) {
         foreach($package in @($framework.topLevelPackages)+@($framework.transitivePackages)) {
-            if($package.vulnerabilities.Count -gt 0) {throw "Dependencia vulnerable: $($package.id)"}
+            foreach($vulnerability in $package.vulnerabilities) {
+                $exceptions=(Get-Content dependency-audit-exceptions.json -Raw|ConvertFrom-Json).exceptions
+                $exception=$exceptions|Where-Object {$_.package -eq $package.id -and $_.advisory -eq $vulnerability.advisoryurl -and
+                    $_.project -eq $project -and $_.reason -and [DateTimeOffset]$_.expires -gt [DateTimeOffset]::UtcNow}
+                if($project -eq $projects[0] -or !$exception){throw "Dependencia vulnerable sin excepción vigente: $($package.id)"}
+                Write-Warning "Excepción temporal de dependencia de pruebas: $($package.id)."
+            }
         }
     }
 }
 $audits|ConvertTo-Json -Depth 20|Set-Content '.build/nuget-audit.json' -Encoding utf8
+foreach($package in $pins.runtimePackages) {
+    $nupkg=Join-Path $env:NUGET_PACKAGES ($package.id.ToLowerInvariant()+'/'+$pins.runtime+'/'+$package.id.ToLowerInvariant()+'.'+$pins.runtime+'.nupkg')
+    if((Get-FileHash -LiteralPath $nupkg -Algorithm SHA512).Hash -ne $package.sha512){throw "Runtime alterado: $($package.id)"}
+    Run-Dotnet @('nuget','verify',$nupkg,'--all','--configfile','NuGet.config')
+}
+foreach($oldStage in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '.build') -Directory -Filter 'stage-*') {
+    Remove-OwnedBuildDirectory $PSScriptRoot $oldStage.FullName
+}
 $stage=Join-Path $PSScriptRoot ('.build\stage-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 Run-Dotnet @('publish','src/UsageViewer.csproj','-c','Release','-r','win-x64',
@@ -74,6 +100,7 @@ $runtime=Get-Content (Join-Path $stage 'UsageViewer.runtimeconfig.json') -Raw | 
 foreach($framework in $runtime.runtimeOptions.includedFrameworks) {
     if($framework.version -ne $pins.runtime) { throw 'El paquete contiene un runtime diferente del fijado.' }
 }
+Assert-RuntimePayload $stage $env:NUGET_PACKAGES $pins
 if((Get-FileHash (Join-Path $stage 'codex/codex-app-server.exe')).Hash -ne $pins.codex.sha256) { throw 'La copia de Codex no coincide con su huella.' }
 if((Get-AuthenticodeSignature (Join-Path $stage 'codex/codex-app-server.exe')).Status -ne 'Valid') { throw 'Firma de Codex no válida en el paquete.' }
 if($Sign) {
@@ -87,10 +114,12 @@ $inventory=@(Get-ChildItem $stage -File -Recurse | Sort-Object FullName | ForEac
     ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 (Join-Path $stage 'package-manifest.json')
 $components=@(
     @{type='application';name='Usage Viewer';version=$version;licenses=@(@{license=@{id='MIT'}})}
-    @{type='framework';name='Microsoft.NETCore.App.Runtime.win-x64';version=$pins.runtime}
-    @{type='framework';name='Microsoft.WindowsDesktop.App.Runtime.win-x64';version=$pins.runtime}
-    @{type='application';name='OpenAI Codex app-server';version=$pins.codex.version;hashes=@(@{alg='SHA-256';content=$pins.codex.sha256});licenses=@(@{license=@{id='Apache-2.0'}})}
+    @{type='application';name='OpenAI Codex app-server';version=$pins.codex.version;purl=('pkg:github/openai/codex@rust-v'+$pins.codex.version);hashes=@(@{alg='SHA-256';content=$pins.codex.sha256});licenses=@(@{license=@{id='Apache-2.0'}})}
 )
+foreach($package in $pins.runtimePackages) {
+    $components+=@{type='framework';name=$package.id;version=$pins.runtime;purl=('pkg:nuget/'+$package.id+'@'+$pins.runtime);
+        hashes=@(@{alg='SHA-512';content=$package.sha512});licenses=@(@{license=@{id='MIT'}})}
+}
 $assets=Get-Content src/obj/project.assets.json -Raw | ConvertFrom-Json
 foreach($entry in $assets.libraries.PSObject.Properties) {
     if($entry.Value.type -eq 'package') {
@@ -104,18 +133,9 @@ New-Item -ItemType Directory -Force dist | Out-Null
     metadata=@{timestamp=[DateTime]::UtcNow.ToString('o');component=$components[0]};components=$components[1..($components.Count-1)]} |
     ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 'dist/UsageViewer-SBOM.cdx.json'
 Copy-Item (Join-Path $stage 'package-manifest.json') 'dist/UsageViewer-package-manifest.json'
-$old=Get-Content installer/legacy-1.0.15.json -Raw | ConvertFrom-Json
 $currentNames=@($inventory.path)
 $cleanup=Join-Path $PSScriptRoot ('.build\legacy-cleanup-'+[Guid]::NewGuid().ToString('N')+'.iss')
-$lines=@()
-foreach($entry in $old.files) {
-    $relative=$entry.path.Replace('\','/')
-    if($relative -match '(^|/)\.\.(/|$)|^[\\/]|:' ) { throw 'Ruta heredada no válida.' }
-    if($relative -notin $currentNames) {
-        $lines+="  DeleteLegacyIfHashMatches('"+$entry.path.Replace("'","''")+"', '"+$entry.sha256+"');"
-    }
-}
-$lines | Set-Content -LiteralPath $cleanup -Encoding utf8
+& "$PSScriptRoot/tools/New-LegacyCleanup.ps1" -CurrentNames $currentNames -OutFile $cleanup
 $args=@("/DAppVersion=$version","/DPublishDir=$stage","/DCleanupInclude=$cleanup")
 if($Development) { $args+='/DDevelopment=1' }
 if($Sign) {
@@ -124,7 +144,7 @@ if($Sign) {
     $command='$q'+$pwsh+'$q -NoProfile -File $q'+$PSScriptRoot+'\tools\Sign-Release.ps1$q -Files $f'
     $args+=('/SUsageViewerSign='+$command)
 }
-if((Get-FileHash $Compiler).Hash -ne $pins.compiler.sha256) { throw 'El compilador cambió antes de empaquetar.' }
+Assert-Compiler $Compiler $pins
 # Recheck the full staged inventory immediately before invoking the packager.
 foreach($entry in $inventory) {
     if((Get-FileHash (Join-Path $stage $entry.path)).Hash -ne $entry.sha256) {throw "Cambió un archivo del paquete: $($entry.path)"}
@@ -154,7 +174,7 @@ finally {$pe.Dispose()}
 $hash=(Get-FileHash $setup.FullName).Hash.ToLowerInvariant()
 "$hash *$($setup.Name)" | Set-Content -Encoding ASCII "$($setup.FullName).sha256"
 [ordered]@{schema='UsageViewer-build-record-1';version=$version;commit=$source;sourceDirty=$sourceDirty;
-    repository='https://github.com/jstihl01/UsageViewer';sdk=$pins.sdk.version;runtime=$pins.runtime;
+    repository=([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.RepositoryUrl;sdk=$pins.sdk.version;runtime=$pins.runtime;
     codex=$pins.codex;compiler=$pins.compiler;unsigned=(!$Sign);
     installer=@{name=$setup.Name;sha256=$hash;bytes=$setup.Length};
     workflowRun=$env:GITHUB_RUN_ID;workflowCommit=$env:GITHUB_SHA} |
@@ -162,6 +182,9 @@ $hash=(Get-FileHash $setup.FullName).Hash.ToLowerInvariant()
 Copy-Item MIGRACION.md 'dist/UsageViewer-MIGRACION.md'
 Copy-Item COMPROBACIONES.md 'dist/UsageViewer-COMPROBACIONES.md'
 Copy-Item AUDITORIA.md 'dist/UsageViewer-AUDITORIA.md'
+Copy-Item REVISION_2026-11-17.md 'dist/UsageViewer-REVISION.md'
+Compress-Archive -Path (Join-Path $results '*.trx'),'.build/nuget-audit.json','.build/inno-build.log' -DestinationPath 'dist/UsageViewer-pruebas.zip' -Force
 foreach($file in $beforeAssets.Keys) {if((Get-FileHash $file).Hash -ne $beforeAssets[$file]) {throw 'La compilación modificó el logo versionado.'}}
+Remove-Item -LiteralPath $cleanup -Force
 Write-Output "Instalador: $($setup.FullName)"
 Write-Output "SHA-256: $hash"

@@ -1,0 +1,51 @@
+name: Weekly dependency review
+on:
+  schedule:
+    - cron: '23 7 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - shell: pwsh
+        run: |
+          ./tools/Restore-Dependencies.ps1
+          ./tools/Check-Dependencies.ps1
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dependency-review
+          path: .build/dependency-report.*
+          if-no-files-found: error
+  notify:
+    needs: review
+    runs-on: windows-2022
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: dependency-review
+          path: review
+      - name: Maintain one review issue
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $report=Get-Content review/dependency-report.json -Raw|ConvertFrom-Json
+          if(!$report.needsReview){exit 0}
+          $api='https://api.github.com/repos/'+$env:GITHUB_REPOSITORY
+          $headers=@{Authorization='Bearer '+$env:GITHUB_TOKEN;Accept='application/vnd.github+json'}
+          $title='[Mantenimiento] Revisar componentes fijados'
+          $issue=Invoke-RestMethod "$api/issues?state=open&per_page=100" -Headers $headers|Where-Object title -eq $title|Select-Object -First 1
+          $body=Get-Content review/dependency-report.md -Raw
+          if($issue.body -eq $body){exit 0}
+          $uri=if($issue){"$api/issues/$($issue.number)"}else{"$api/issues"}
+          $method=if($issue){'PATCH'}else{'POST'}
+          Invoke-RestMethod $uri -Method $method -Headers $headers -ContentType 'application/json' -Body (@{title=$title;body=$body}|ConvertTo-Json)|Out-Null
