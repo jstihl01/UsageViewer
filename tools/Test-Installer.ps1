@@ -11,10 +11,22 @@ $logs=Join-Path $root '.build/installer-smoke'
 New-Item -ItemType Directory -Force -Path $logs,$target|Out-Null
 $checks=[Collections.Generic.List[object]]::new()
 function Run-Hidden([string]$File,[string[]]$Arguments,[int]$Expected=0) {
+    $logArgument=$Arguments|Where-Object {$_ -like '/LOG=*'}|Select-Object -First 1
+    $completionLog=if($logArgument){$logArgument.Substring(5).Trim('"')}else{''}
+    if($completionLog -and (Test-Path -LiteralPath $completionLog)){Remove-Item -LiteralPath $completionLog -Force}
     $run=Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -WindowStyle Hidden
     if(!$run.WaitForExit(90000)){try{$run.Kill()}catch{};throw 'Plazo de instalación agotado.'}
     $run.Refresh()
     if($run.ExitCode -ne $Expected){throw "Código de instalación inesperado: $($run.ExitCode), esperado: $Expected"}
+    if($completionLog) {
+        # Inno's uninstall bootstrap can exit before its temporary worker finishes.
+        $deadline=[DateTime]::UtcNow.AddSeconds(90)
+        do {
+            if((Test-Path -LiteralPath $completionLog) -and (Get-Content -LiteralPath $completionLog -Tail 5) -match 'Log closed\.') {return}
+            Start-Sleep -Milliseconds 100
+        } while([DateTime]::UtcNow -lt $deadline)
+        throw 'El instalador/desinstalador no confirmó el cierre de su registro.'
+    }
 }
 function Check([string]$Name,[bool]$Passed){$checks.Add(@{name=$Name;passed=$Passed});if(!$Passed){throw "No se cumple: $Name"}}
 function Wait-Instance([int]$PreviousId=0) {
@@ -80,9 +92,9 @@ try {
     Check 'owned-executable-removed' (!(Test-Path -LiteralPath $exe))
     Check 'foreign-file-survives-uninstall' ((Get-FileHash $known).Hash -eq $foreignHash)
     Remove-Item -LiteralPath $known -Force
-    if(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Force}
+    if(Test-Path -LiteralPath $target){[IO.Directory]::Delete($target)}
     # A second clean install must disappear completely when uninstalled.
-    Run-Hidden $Installer $args
+    Run-Hidden $Installer @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$target+'"'),('/LOG="'+(Join-Path $logs 'install-clean.log')+'"'))
     $exe=Join-Path $target 'UsageViewer.exe';$missing=$exe+'.missing'
     Move-Item -LiteralPath $exe -Destination $missing
     Run-Hidden (Join-Path $target 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+(Join-Path $logs 'missing-exe.log')+'"')) 1
