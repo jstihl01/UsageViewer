@@ -244,7 +244,7 @@ public partial class App : Application
     private void PowerChanged(object sender,PowerModeChangedEventArgs args)
     {
         if(args.Mode==PowerModes.Resume) Dispatcher.BeginInvoke(()=>
-        { if(panel?.IsVisible==true) PositionPanel(); Observe(RefreshNowAsync()); });
+        { tray?.RecheckAfterResume(); Render(); if(panel?.IsVisible==true) PositionPanel(); Observe(RefreshNowAsync()); });
     }
     private async void Observe(Task task)
     {

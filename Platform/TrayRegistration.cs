@@ -18,44 +18,59 @@ public sealed class WindowsTrayShell : ITrayShell
 public sealed class TrayRegistration(ITrayShell shell, IntPtr owner, Guid guid, IEventLog log, TimeProvider? time = null) : IDisposable
 {
     private readonly TimeProvider clock=time??TimeProvider.System;
-    private bool registered, useGuid=true, version4, disposed, retrying;
+    private bool registered, useGuid=true, version4, disposed, retrying, identityEstablished, startupPrepared, probing;
     private long failedAt;
     public bool Version4 => version4;
     public bool Registered => registered;
     public bool UsesGuid => useGuid;
     public void ExplorerRestarted() { registered=false; version4=false; retrying=false; }
+    public void RecheckAfterResume() { probing=true; retrying=false; }
 
     public bool Update(IntPtr icon,string tip,bool changed)
     {
         if (disposed) return false;
         if (retrying && clock.GetElapsedTime(failedAt)<TimeSpan.FromSeconds(5)) return false;
         var data=Data(icon,tip);
-        if (registered && !changed)
+        if(!startupPrepared)
+        {
+            // Older versions could leave their GUID icon behind after switching to HWND identity.
+            // The application holds its single-instance mutex before registering this owned GUID.
+            shell.Notify(2,ref data);
+            startupPrepared=true;
+        }
+        if (registered && !changed && !probing)
         {
             if (!version4) SetVersion(ref data);
             return true;
         }
-        if (registered && shell.Notify(1,ref data)) return true;
+        if (registered && shell.Notify(1,ref data)) {probing=false;return true;}
         registered=false;
         // A failed MODIFY can mean the icon still exists. Try MODIFY after ADD before deleting anything.
         if (shell.Notify(0,ref data) || shell.Notify(1,ref data))
             return Complete(ref data);
-        if (useGuid)
+        if (useGuid && !identityEstablished)
         {
+            // A failed ADD/MODIFY does not prove absence. Retire the candidate before creating
+            // an alternative identity, and never switch identity after a successful registration.
+            shell.Notify(2,ref data);
+            var candidate=Identifier(true);
+            if(shell.Bounds(ref candidate,out _)) return Failed();
             useGuid=false;
             log.Write("tray_identity_fallback");
             data=Data(icon,tip);
             if (shell.Notify(0,ref data) || shell.Notify(1,ref data)) return Complete(ref data);
         }
-        shell.Notify(2,ref data);
-        if (shell.Notify(0,ref data)) return Complete(ref data);
+        return Failed();
+    }
+    private bool Failed()
+    {
         retrying=true; failedAt=clock.GetTimestamp();
         log.Write("tray_registration_failed");
         return false;
     }
 
     private bool Complete(ref NativeMethods.IconData data)
-    { registered=true; retrying=false; SetVersion(ref data); return true; }
+    { registered=true; identityEstablished=true; probing=false; retrying=false; SetVersion(ref data); return true; }
     private void SetVersion(ref NativeMethods.IconData data)
     {
         data.Version=4;
@@ -71,15 +86,20 @@ public sealed class TrayRegistration(ITrayShell shell, IntPtr owner, Guid guid, 
     };
     public bool TryGetBounds(out NativeMethods.ScreenRect bounds)
     {
-        var id=new NativeMethods.IconIdentifier
-        { Size=(uint)Marshal.SizeOf<NativeMethods.IconIdentifier>(),Window=owner,Id=1,Guid=useGuid?guid:Guid.Empty };
+        var id=Identifier(useGuid);
         return shell.Bounds(ref id,out bounds);
     }
+    private NativeMethods.IconIdentifier Identifier(bool byGuid)=>new()
+    {Size=(uint)Marshal.SizeOf<NativeMethods.IconIdentifier>(),Window=owner,Id=1,Guid=byGuid?guid:Guid.Empty};
     public void Dispose()
     {
         if (disposed) return;
         disposed=true;
         var data=Data(IntPtr.Zero,"");
+        shell.Notify(2,ref data);
+        // Retire either identity left by a previous registration attempt using this owner.
+        data.Guid=useGuid?Guid.Empty:guid;
+        if(useGuid)data.Flags&=~0x20u;else data.Flags|=0x20u;
         shell.Notify(2,ref data);
     }
 }

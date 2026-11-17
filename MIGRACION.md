@@ -1,6 +1,7 @@
-# Migración a Usage Viewer 1.1.1
+# Migración a Usage Viewer 1.1.2
 
 - Windows 11 x64 (Intel/AMD); ARM64 no está soportado.
+- Si ya usabas 1.1.1, esta actualización conserva su sesión cifrada. Corrige los iconos duplicados al reanudar y el contraste del menú; el texto al pasar el cursor pasa a ser únicamente UsageViewer.
 - Se conserva el diseño del icono de 5 horas, su borde gris, el detalle con ambos ciclos y el logo aprobado.
 - Si apareció **persist_failed** al conectar en 1.1.0, instala 1.1.1 y vuelve a iniciar sesión. También puede ser necesario repetir el acceso si la sesión anterior sí se guardó en 1.1.0.
 - El backend oficial cifra los tokens en **codex-profile\secrets\codex_auth.age** y guarda solo su clave pequeña en Windows. Así admite credenciales largas sin recurrir a un archivo en claro. No se copia el token antiguo al nuevo formato.

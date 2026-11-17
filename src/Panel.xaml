@@ -4,7 +4,7 @@
     xmlns:local="clr-namespace:UsageViewer"
     Title="Usage Viewer" Icon="Assets/UsageViewer.ico" Width="354" SizeToContent="Height" Topmost="True"
     ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True"
-    Background="Transparent" ShowInTaskbar="False" FontFamily="Segoe UI" FontSize="13">
+    Background="Transparent" Foreground="{StaticResource Text}" ShowInTaskbar="False" FontFamily="Segoe UI" FontSize="13">
     <Border Background="{StaticResource Surface}" CornerRadius="18" BorderBrush="#484848"
             BorderThickness="1" Padding="18">
         <StackPanel>

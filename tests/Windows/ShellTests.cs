@@ -79,6 +79,7 @@ public class ShellTests
     {
         var shell=new FakeShell();using var registration=new TrayRegistration(shell,new(1),Guid.NewGuid(),NullLog.Instance);
         Assert.True(registration.Update(new(1),"first",true));
+        shell.Operations.Clear();
         shell.FailModifyOnce=true;
         Assert.True(registration.Update(new(2),"second",true));
         Assert.True(registration.Registered);Assert.True(registration.UsesGuid);
@@ -157,7 +158,7 @@ public class ShellTests
             return !RejectVersion;
         }
         public bool Bounds(ref NativeMethods.IconIdentifier id,out NativeMethods.ScreenRect bounds)
-        { LastBounds=id;bounds=default;return true; }
+        { LastBounds=id;bounds=default;return Exists&&(!RejectGuid||id.Guid==Guid.Empty); }
     }
     private static byte[] Pixels(BitmapSource bitmap)
     {var bytes=new byte[bitmap.PixelWidth*bitmap.PixelHeight*4];bitmap.CopyPixels(bytes,bitmap.PixelWidth*4,0);return bytes;}

@@ -10,21 +10,22 @@ internal sealed class TrayIndicator : IDisposable
 {
     private readonly IntPtr owner;
     private readonly Action toggle;
-    private readonly ContextMenu menu=new();
+    private readonly ContextMenu menu;
     private readonly MenuItem marker;
     private readonly TrayRegistration registration;
     private readonly uint taskbarCreated=NativeMethods.RegisterWindowMessage("TaskbarCreated");
     private OwnedIcon? icon;
     private (Cycle? Cycle,int Step,int Size,bool Marker)? displayed;
-    private string tooltip="";
+    internal const string TooltipText="UsageViewer";
     private bool dirty=true;
     internal bool ShowMarker { get; private set; }
 
     internal TrayIndicator(IntPtr owner,Action toggle,Action open,Action hide,Action refresh,
-        Action logs,Action<bool> markerChanged,Action exit,bool showMarker,IEventLog log)
+        Action logs,Action<bool> markerChanged,Action exit,bool showMarker,IEventLog log,ITrayShell? shell=null)
     {
         this.owner=owner; this.toggle=toggle; ShowMarker=showMarker;
-        registration=new(new WindowsTrayShell(),owner,new("F4E7BD90-A53E-45A9-91A9-77291E4052DC"),log);
+        registration=new(shell??new WindowsTrayShell(),owner,new("F4E7BD90-A53E-45A9-91A9-77291E4052DC"),log);
+        menu=TrayMenu.Create();
         Add("Abrir Usage Viewer",open); Add("Actualizar ahora",refresh);
         marker=new() { Header="Marca de tiempo accesible",IsCheckable=true,IsChecked=showMarker };
         marker.Click+=(_,_)=> { ShowMarker=marker.IsChecked; markerChanged(ShowMarker); dirty=true; };
@@ -50,15 +51,10 @@ internal sealed class TrayIndicator : IDisposable
             var next=TrayRenderer.ToIcon(TrayRenderer.Draw(limits,now,size,ShowMarker));
             icon?.Dispose(); icon=next; displayed=snapshot; dirty=true;
         }
-        string pace=UsageText.PaceLabel(Ring.GetPace(limits.Short,now));
-        string weeklyPace=UsageText.PaceLabel(Ring.GetPace(limits.Weekly,now));
-        string text=$"5 horas: {UsageText.Remaining(limits.Short,now)}{(pace.Length>0?" · "+pace:"")}\n"+
-            $"7 días: {UsageText.Remaining(limits.Weekly,now)}{(weeklyPace.Length>0?" · "+weeklyPace:"")}";
-        if (limits.Stale) text+=" · Desactualizado";
-        dirty|=text!=tooltip; tooltip=text;
-        if (registration.Update(icon!.Handle,tooltip,dirty)) dirty=false;
+        if (registration.Update(icon!.Handle,TooltipText,dirty)) dirty=false;
     }
 
+    internal void RecheckAfterResume() {registration.RecheckAfterResume();dirty=true;}
     internal bool ProcessMessage(int message,IntPtr lParam)
     {
         if (taskbarCreated!=0 && (uint)message==taskbarCreated)

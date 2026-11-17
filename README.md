@@ -34,7 +34,7 @@ Ante un fallo se conserva la última lectura con un aviso. Los fallos iniciales 
 
 Una cuota con porcentaje pero sin fecha de reinicio conserva su cifra y muestra «Reinicio no disponible», sin inventar un ritmo. Las ventanas no compatibles y las respuestas irreconocibles tienen mensajes distintos.
 
-El menú contextual permite actualizar, activar una marca de tiempo accesible, abrir los registros y salir. El tooltip añade el ritmo en texto; la marca accesible está desactivada por defecto.
+El menú contextual permite actualizar, activar una marca de tiempo accesible, abrir los registros y salir. Al pasar el cursor, el texto es únicamente **UsageViewer**. El ritmo se consulta en el detalle; la marca accesible está desactivada por defecto.
 
 ## Actualizar y desinstalar
 

@@ -1,6 +1,6 @@
 # Mantenimiento y publicación
 
-Responsable: **jstihl01**. Versión de esta revisión: **1.1.1**.
+Responsable: **jstihl01**. Versión de esta revisión: **1.1.2**.
 
 ## Dependencias
 
@@ -12,6 +12,8 @@ Responsable: **jstihl01**. Versión de esta revisión: **1.1.1**.
 El digest de Codex procede de los metadatos de la publicación **rust-v0.167.0** de OpenAI; el binario validado está firmado por **OpenAI OpCo, LLC**. El compilador fijado está firmado por **Pyrsys B.V.**. Su campo FileVersion no es una fuente fiable de versión; la comprobación usa su huella y procedencia.
 
 Desde 1.1.1 se fija **features.secret_auth_storage=true**, con **cli_auth_credentials_store=keyring**. Revisar especialmente las implementaciones oficiales login/src/auth/storage.rs y secrets/src/{lib,local}.rs al actualizar Codex. La prueba de 16.000 caracteres, su reinicio, aislamiento y ausencia de fallback son obligatorios: una clave corta no cubre la sesión OAuth de ChatGPT.
+
+Desde 1.1.2 las pruebas de bandeja deben distinguir los registros GUID y HWND, en lugar de reducirlos a una existencia booleana. Mantener la identidad elegida durante la recuperación. Las pruebas del menú deben cargar los recursos al nivel real de Application: un diccionario local no reproduce cómo WPF aplica estilos implícitos al texto de sus plantillas.
 
 Los avisos de .NET se extraen de los paquetes runtime exactos. WindowsDesktop no aporta un archivo separado de avisos en este paquete: se añaden los oficiales de las revisiones WPF y WinForms correspondientes a 10.0.15, con URL y huella fijadas. Se conservan los avisos realmente suministrados y su inventario. Codex incluye LICENSE y NOTICE de la etiqueta fijada; la comprobación no acredita una auditoría exhaustiva de todas las dependencias Rust enlazadas.
 

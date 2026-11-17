@@ -1,10 +1,12 @@
-# Comprobaciones manuales · Usage Viewer 1.1.1
+# Comprobaciones manuales · Usage Viewer 1.1.2
 
 Todas las comprobaciones de esta tabla quedan **pendientes de validación por el usuario**. Las pruebas automatizadas, sus resultados y sus límites se describen en AUDITORIA.md. No se ha controlado ni observado el escritorio del usuario para dar estas comprobaciones por superadas.
 
 Al ejecutar un caso, anota fecha, versión exacta, configuración de Windows y resultado. Usa una VM o cuenta de prueba para revocaciones, cambios de reloj y fallos provocados.
 
 Historial aportado por el usuario: en **1.1.0**, MAN-04 falló con **persist_failed** porque las credenciales excedían el límite de la entrada de Windows. En **1.1.1** este caso vuelve a quedar pendiente de validación con su cuenta; la regresión se prueba automáticamente con datos sintéticos de 16.000 caracteres.
+
+El 17/11/2026 el usuario aportó capturas de **1.1.1** con icono duplicado tras reanudar Windows y texto blanco sobre blanco en el menú. Se corrigen en **1.1.2**; la repetición manual de esos casos queda pendiente del usuario. Los registros confirman un cambio de identidad del icono en la instalación anterior.
 
 | ID | Precondición | Pasos | Resultado esperado | Resultado / fecha |
 | --- | --- | --- | --- | --- |
@@ -18,7 +20,7 @@ Historial aportado por el usuario: en **1.1.0**, MAN-04 falló con **persist_fai
 | MAN-08 | Panel abierto | Pulsar dentro, fuera, otra app, icono y Esc | Dentro permanece; fuera e icono pliegan; el clic llega a su destino; Esc pliega | Pendiente |
 | MAN-09 | Tema claro y oscuro | Revisar tamaños y colores; activar y desactivar marca accesible | Un anillo de 5 horas con borde gris; detalle con dos; logo sin borde; textos legibles | Pendiente |
 | MAN-10 | Panel e icono disponibles | Cambiar escala y resolución; probar otro monitor | Icono nítido; panel dentro del área útil y cercano al icono | Pendiente |
-| MAN-11 | Cuenta activa, VM | Suspender, reanudar; bloquear y desbloquear; probar RDP | Conserva la instancia y vuelve a consultar; el panel no sale de pantalla | Pendiente |
+| MAN-11 | Cuenta activa, VM | Suspender y reanudar varias veces; bloquear y desbloquear; probar RDP | Conserva una instancia y un único icono, vuelve a consultar y el panel no sale de pantalla | Pendiente |
 | MAN-12 | Cuenta activa | Desconectar y volver a conectar la red | Conserva última lectura con aviso; se recupera o permite Actualizar ahora | Pendiente |
 | MAN-13 | VM, servidor de prueba congelado o terminado | Simular silencio o fin del servidor | Detecta plazo/EOF, termina el hijo y reconecta sin acumular procesos | Pendiente |
 | MAN-14 | Cuenta de prueba | Invalidar su sesión y volver a abrir el detalle | Diferencia autenticación de red y permite iniciar sesión de nuevo | Pendiente |
@@ -34,5 +36,7 @@ Historial aportado por el usuario: en **1.1.0**, MAN-04 falló con **persist_fai
 | MAN-24 | VM, servidor ausente o puesto en cuarentena | Abrir y después desinstalar | Explica el componente ausente; la limpieza no declara éxito si falla | Pendiente |
 | MAN-25 | Registros existentes | Abrir registros desde el menú | Hay diagnóstico acotado; no hay tokens, correo, URL de login ni respuestas completas | Pendiente |
 | MAN-26 | Versión posterior publicada o entorno de prueba | Abrir el panel | Aviso discreto; abre la página oficial y nunca ejecuta una actualización automáticamente | Pendiente |
+| MAN-27 | Tema claro, oscuro y contraste alto de Windows | Abrir el menú con clic derecho y recorrer opciones con teclado | Todas las etiquetas, opciones y marcas son legibles; el panel conserva su texto claro | Pendiente |
+| MAN-28 | Datos disponibles, ausentes o desactualizados | Dejar el cursor sobre el icono | El texto indica únicamente UsageViewer | Pendiente |
 
 La comparación con el visor oficial debe hacerse sin consumo simultáneo. Si hay diferencias, anota las horas de ambas lecturas; no envíes credenciales ni archivos de autenticación.

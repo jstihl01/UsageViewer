@@ -1,19 +1,13 @@
-# Usage Viewer 1.1.1
+# Usage Viewer 1.1.2
 
-Corrige **persist_failed** al iniciar sesión con ChatGPT en Windows.
+- Corrige una causa de iconos duplicados tras suspender y reanudar Windows: mantiene una sola identificación durante la recuperación y retira el GUID residual de las versiones anteriores al iniciar.
+- Corrige el texto blanco sobre blanco del menú contextual. El menú utiliza los colores del sistema y el panel conserva su texto claro.
+- Al pasar el cursor sobre el icono aparece únicamente **UsageViewer**.
 
-En 1.1.0, algunos tokens OAuth superaban el límite de 2.560 caracteres admitido por una entrada del Administrador de credenciales de Windows. El acceso en el navegador terminaba, pero no podía guardarse la sesión.
+Se añaden pruebas que distinguen ambos registros del icono, simulan ciclos repetidos de recuperación y comprueban el texto generado por WPF con los recursos reales de la aplicación. Las pruebas reproducen ambos defectos con la implementación anterior.
 
-Esta versión usa el backend oficial cifrado del mismo servidor Codex 0.167.0: guarda los tokens cifrados con age en el perfil privado y conserva solo una clave aleatoria pequeña en Windows. No vuelve silenciosamente a un archivo con tokens en claro.
+Se conserva la sesión cifrada de 1.1.1 y el diseño aprobado. No cambia el almacenamiento de credenciales ni la consulta de cuotas.
 
-- Prueba automática con credenciales sintéticas de 16.000 caracteres, persistencia tras reiniciar y aislamiento entre perfiles.
-- Comprobación del cierre de sesión y de que un fallo de guardado no crea auth.json.
-- Limpieza al desinstalar de la clave de cifrado y de las credenciales antiguas, exclusivamente para Usage Viewer.
-- Explicación del fallo de almacenamiento en la interfaz y diagnóstico seguro.
-- Se conserva el diseño aprobado y las demás correcciones de 1.1.0.
+Windows 11 x64 (Intel/AMD; no ARM64). Se adjuntan instalador, SHA-256, inventario, SBOM y atestaciones de procedencia. Los binarios propios siguen sin firma Authenticode.
 
-**Instala 1.1.1 y vuelve a iniciar sesión.** Puede ser necesario repetir el acceso incluso si 1.1.0 sí había guardado una sesión corta.
-
-Se adjuntan instalador, SHA-256, inventario, SBOM y atestaciones de procedencia. Windows 11 x64 (Intel/AMD; no ARM64). Los binarios propios siguen sin firma Authenticode, como se documentó en 1.1.0.
-
-La prueba con una cuenta real de ChatGPT y las demás comprobaciones manuales permanecen pendientes del usuario. No se ha controlado su escritorio.
+La suspensión física y la revisión visual del menú quedan pendientes de validación por el usuario. No se ha controlado su escritorio para hacer pruebas manuales.
